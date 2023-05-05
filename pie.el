@@ -263,15 +263,12 @@ Usage:
       (copy-directory dir build-dir t t t)
       (let ((default-directory build-dir))
         (if build
-            (funcall build)
+            (funcall build build-dir)
           ;; (add-to-list 'load-path lisp-dir)
-          (pie-default-build)))
+          (pie-default-build pp)))
       (message "Finish installing %s" name))
     (when (pie--built-p pp)
-      (add-to-list 'load-path lisp-dir)
-      ;; (message "start to load autoloads %s" (expand-file-name (concat name "-autoloads.el") lisp-dir))
-      ;; (load (expand-file-name (concat name "-autoloads.el") lisp-dir) nil 'nomessage)
-      )))
+      (add-to-list 'load-path lisp-dir))))
 
 (defun pie--git-clone (url dir rev)
   (let (cmd)
@@ -299,9 +296,10 @@ Usage:
         (error "Failed to clone %s from %s" name url)))
     (message "Finish fetching %s" name)))
 
-(defun pie-default-build ()
+(defun pie-default-build (pp)
   "Compile elisp files in a repository."
-  (let* ((dir default-directory)
+  (let* ((dir (pie-package-build-dir pp))
+         (default-directory dir)
          (files (directory-files dir t "\\.el$"))
          (autoloads (concat (file-name-nondirectory (directory-file-name dir)) "-autoloads.el")))
     (message "autoloads filename %s" autoloads)
@@ -338,9 +336,7 @@ Usage:
                                             :deps (pie-package-deps pp)
                                             :dir dir-tmp))
             (delete-directory dir-tmp t)
-            ;; (advice-add #'vc-git-clone :override #'pie--git-clone-advice)
             (pie--install-package pp-tmp)
-            ;; (advice-remove #'vc-git-clone #'pie--git-clone-advice)
             (delete-directory dir t)
             (rename-file dir-tmp dir))
         (user-error "No package named %s is defined" name)))))
@@ -348,12 +344,10 @@ Usage:
 (defun pie-install-packages ()
   "Fetch all packages in `pie--packages' if they have not been installed. Called after the last `pie' invoking."
   (interactive)
-  ;; (advice-add #'vc-git-clone :override #'pie--git-clone-advice)
   (condition-case err
       (progn
         (cl-dolist (pp (hash-table-values pie--packages))
           (pie--install-package pp))
-        ;; (advice-remove #'vc-git-clone #'pie--git-clone-advice)
         (message "All packages have been installed."))
     (error
      (advice-remove #'vc-git-clone #'pie--git-clone-advice)
