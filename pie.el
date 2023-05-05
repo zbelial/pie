@@ -226,13 +226,6 @@ Usage:
     depth))
 ;; (pie--git-depth)
 
-(defun pie--git-clone-advice (url dir rev)
-  (message "pie--git-clone-advice")
-  (if rev
-      (vc-git--out-ok "clone"  "--branch" rev (pie--git-depth) "--single-branch" url dir)
-    (vc-git--out-ok "clone" (pie--git-depth) url dir)
-    dir))
-
 (defun pie--build-package (pp &optional buildp)
   (let ((dir (pie-package-dir pp))
         (build-dir (pie-package-build-dir pp))
@@ -351,20 +344,23 @@ Usage:
             ;; delete the original directory and rename the tmp directory
             (setq dir (pie-package-dir pp))
             (setq dir-tmp (concat dir "-tmp"))
-            (setq pp-temp (make-pie-package :package (pie-package-package pp)
-                                            :url (pie-package-url pp)
-                                            :rev (pie-package-rev pp)
-                                            :backend (pie-package-backend pp)
-                                            :branch (pie-package-branch pp)
-                                            :build (pie-package-build pp)
-                                            :deps (pie-package-deps pp)
-                                            :dir dir-tmp))
+            (setq pp-tmp (make-pie-package :package (pie-package-package pp)
+                                           :url (pie-package-url pp)
+                                           :rev (pie-package-rev pp)
+                                           :backend (pie-package-backend pp)
+                                           :branch (pie-package-branch pp)
+                                           :build (pie-package-build pp)
+                                           :deps (pie-package-deps pp)
+                                           :dir dir-tmp))
             (delete-directory dir-tmp t)
-            (pie--install-package pp-tmp)
-            (delete-directory dir t)
-            (rename-file dir-tmp dir)
-            ;; build
-            (pie--build-package pp t))
+            (pie--fetch-package pp-tmp)
+            (if (pie--fetched-p pp-tmp)
+                (progn
+                  (delete-directory dir t)
+                  (rename-file dir-tmp dir)
+                  ;; build
+                  (pie--build-package pp t))
+              (error "Failed to clone %s" name)))
         (user-error "No package named %s is defined" name)))))
 
 ;;;###autoload
