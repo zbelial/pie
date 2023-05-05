@@ -35,6 +35,7 @@
 (eval-when-compile
   (require 'cl-macs))
 (require 'subr-x)
+(require 'autoload)
 
 (defgroup pie nil
   "Package installer for Emacs."
@@ -119,7 +120,7 @@ the `clone' function."
 (cl-defstruct pie-package
   (package) ;; string
   (url) ;; string
-  (vc-backend) ;; symbol
+  (backend) ;; symbol
   (branch) ;; string
   (rev) ;; string, if provided, rev will override branch
   (build) ;; function
@@ -135,7 +136,7 @@ the `clone' function."
     (puthash package pp pie--packages)))
 
 ;;;###autoload
-(cl-defun pie (package url &key vc-backend rev branch build deps lisp-dir)
+(cl-defun pie (package url &key backend rev branch build deps lisp-dir)
   "Fetch a package and (optionally) build it for using with Emacs.
 
 Usage:
@@ -144,7 +145,7 @@ Usage:
      [:keyword [option]]...)
 
 :url             String. The URL of the repository used to fetch the package source.
-:vc-backend      Symbol, optionally. Which VC backend to use to clone the repository.
+:backend         Symbol, optionally. Can be 'http or VC backend.
                  If not specified, use `pie-vc-heuristic-alist' to determine the backend
                  (or `pie-vc-default-backend' if no backend can be determined from it).
 :branch          String, optionally. Which branch to checkout after cloning the repository.
@@ -155,19 +156,20 @@ Usage:
 :lisp-dir        String, optionally. Subdirectory name inside the repository.
 "
   (let (pp
-        (vc-backend vc-backend)
+        (backend backend)
         (rev rev)
         (branch branch)
         (build build)
         (deps deps)
         (lisp-dir lisp-dir)
         dir build-dir)
-    (when (null vc-backend)
-      (setq vc-backend (or (alist-get url pie-vc-heuristic-alist
-                                      nil nil #'string-match-p)
-                           pie-vc-default-backend)))
-    (when (not (member vc-backend vc-handled-backends))
-      (user-error "Invalid vc-backend %s" vc-backend))
+    (when (null backend)
+      (setq backend (or (alist-get url pie-vc-heuristic-alist
+                                   nil nil #'string-match-p)
+                        pie-vc-default-backend)))
+    (when (and (not (member backend vc-handled-backends))
+               (not (eq backend 'http)))
+      (user-error "Invalid backend %s" backend))
     (setq dir (expand-file-name package (pie--repos-directory)))
     (setq build-dir (expand-file-name package (pie--builds-directory)))
     (if lisp-dir
@@ -178,7 +180,7 @@ Usage:
     (setq pp (make-pie-package :package package
                                :url url
                                :rev rev
-                               :vc-backend vc-backend
+                               :backend backend
                                :branch branch
                                :build build
                                :deps deps
@@ -186,8 +188,8 @@ Usage:
                                :build-dir build-dir
                                :lisp-dir lisp-dir))
     (pie--add-to-packages pp)))
-;; (pie "pie" "https://bitbucket.org/zbelial/pie" :vc-backend 'Git :deps (lambda () '("abc")))
-;; (pie "stock" "https://bitbucket.org/zbelial/stock" :vc-backend 'Git)
+;; (pie "pie" "https://bitbucket.org/zbelial/pie" :backend 'Git :deps (lambda () '("abc")))
+;; (pie "stock" "https://bitbucket.org/zbelial/stock" :backend 'Git)
 
 (defun pie--installed-p (pp)
   "Check whether package `pp' has been fetched. `pp' is an instance of `pie-package'"
@@ -266,9 +268,7 @@ Usage:
             (funcall build build-dir)
           ;; (add-to-list 'load-path lisp-dir)
           (pie-default-build pp)))
-      (message "Finish installing %s" name))
-    (when (pie--built-p pp)
-      (add-to-list 'load-path lisp-dir))))
+      (message "Finish installing %s" name))))
 
 (defun pie--git-clone (url dir rev)
   (let (cmd)
@@ -277,36 +277,46 @@ Usage:
       (setq cmd (concat "git --no-pager clone " (pie--git-depth) url " " dir)))
     (call-process-shell-command cmd nil nil)))
 
+(defun pie--download (url dir)
+  (let (name
+        newname)
+    (setq name (substring url (- (length url) (string-search "/" (reverse url)))))
+    (setq newname (expand-file-name name dir))
+    (url-copy-file url newname)))
+
 (defun pie--fetch-package (pp)
   "Fetch package `pp', where `pp' is an instance of `pie-package'."
   (let ((dir (pie-package-dir pp))
         (url (pie-package-url pp))
         (rev (pie-package-rev pp))
-        (vc-backend (pie-package-vc-backend pp))
+        (backend (pie-package-backend pp))
         (branch (pie-package-branch pp))
         (name (pie-package-package pp)))
     (message "Start to fetch %s" name)
     (unless (file-exists-p dir)
       (make-directory dir t))
-    (if (eq vc-backend 'Git)
-        (progn
-          (pie--git-clone url dir (or (and (not (eq rev :last-release)) rev) branch)))
-      (unless (vc-clone url vc-backend dir
-                        (or (and (not (eq rev :last-release)) rev) branch))
-        (error "Failed to clone %s from %s" name url)))
-    (message "Finish fetching %s" name)))
+    (cond
+     ((eq backend 'Git)
+      (pie--git-clone url dir (or (and (not (eq rev :last-release)) rev) branch)))
+     ((eq backend 'http)
+      (pie--download url dir))
+     (t
+      (vc-clone url backend dir
+                (or (and (not (eq rev :last-release)) rev) branch))))
+    (if (not (pie--fetched-p pp))
+        (error "Failed to clone %s from %s" name url)
+      (message "Finish fetching %s" name))))
 
 (defun pie-default-build (pp)
   "Compile elisp files in a repository."
-  (let* ((dir (pie-package-build-dir pp))
-         (default-directory dir)
-         (files (directory-files dir t "\\.el$"))
-         (autoloads (concat (file-name-nondirectory (directory-file-name dir)) "-autoloads.el")))
-    (message "autoloads filename %s" autoloads)
+  (let* ((lisp-dir (pie-package-lisp-dir pp))
+         (default-directory lisp-dir)
+         (files (directory-files lisp-dir t "\\.el$"))
+         (autoloads (concat (file-name-nondirectory (directory-file-name lisp-dir)) "-autoloads.el")))
     (cl-dolist (file files)
       (when (not (string-suffix-p ".dir-locals.el" file))
         (byte-compile-file file)))
-    (make-directory-autoloads dir autoloads)))
+    (make-directory-autoloads lisp-dir autoloads)))
 
 (defun pie-update-package ()
   "Update a package in `pie--packages'."
@@ -330,7 +340,7 @@ Usage:
             (setq pp-temp (make-pie-package :package (pie-package-package pp)
                                             :url (pie-package-url pp)
                                             :rev (pie-package-rev pp)
-                                            :vc-backend (pie-package-vc-backend pp)
+                                            :backend (pie-package-backend pp)
                                             :branch (pie-package-branch pp)
                                             :build (pie-package-build pp)
                                             :deps (pie-package-deps pp)
@@ -341,16 +351,25 @@ Usage:
             (rename-file dir-tmp dir))
         (user-error "No package named %s is defined" name)))))
 
+(defun pie--active-package (pp)
+  (let* ((lisp-dir (pie-package-lisp-dir pp))
+         (autoloads (expand-file-name (concat (file-name-nondirectory (directory-file-name lisp-dir)) "-autoloads.el") lisp-dir)))
+    (when (pie--built-p pp)
+      (add-to-list 'load-path lisp-dir)
+      (when (file-exists-p autoloads)
+        (load-file autoloads)))))
+
+;;;###autoload
 (defun pie-install-packages ()
   "Fetch all packages in `pie--packages' if they have not been installed. Called after the last `pie' invoking."
   (interactive)
   (condition-case err
       (progn
         (cl-dolist (pp (hash-table-values pie--packages))
-          (pie--install-package pp))
+          (pie--install-package pp)
+          (pie--active-package pp))
         (message "All packages have been installed."))
     (error
-     (advice-remove #'vc-git-clone #'pie--git-clone-advice)
      (message "Error when installing packages: %S" err))))
 ;; (pie-install-packages)
 
