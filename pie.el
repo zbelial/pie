@@ -102,14 +102,8 @@ the `clone' function."
   :type  'directory
   :group 'pie)
 
-(defvar pie-builds-directory (expand-file-name "builds" pie-directory)
-  "Location of the repos directory.")
-
 (defun pie--builds-directory ()
   (expand-file-name "builds" pie-directory))
-
-(defvar pie-repos-directory (expand-file-name "repos" pie-directory)
-  "Location of the repos directory.")
 
 (defun pie--repos-directory ()
   (expand-file-name "repos" pie-directory))
@@ -145,11 +139,11 @@ Usage:
      [:keyword [option]]...)
 
 :url             String. The URL of the repository used to fetch the package source.
-:backend         Symbol, optionally. Can be 'http or VC backend.
+:backend         Symbol, optionally. Can be 'http or a VC backend in `vc-handled-backends'.
                  If not specified, use `pie-vc-heuristic-alist' to determine the backend
-                 (or `pie-vc-default-backend' if no backend can be determined from it).
+                 (or `pie-vc-default-backend' if no backend can be determined).
 :branch          String, optionally. Which branch to checkout after cloning the repository.
-:rev             String, optionally. Which revision to clone.
+:rev             String, optionally. Which revision to clone. Has higher priority than :branch.
 :build           Function, optionally. Specify how to build the package.
                  If not specified, use `pie-default-build'.
 :deps            List of string or a function returning a list of string, optionally.
@@ -239,6 +233,26 @@ Usage:
     (vc-git--out-ok "clone" (pie--git-depth) url dir)
     dir))
 
+(defun pie--build-package (pp &optional buildp)
+  (let ((dir (pie-package-dir pp))
+        (build-dir (pie-package-build-dir pp))
+        (lisp-dir (pie-package-lisp-dir pp))
+        (build (pie-package-build pp))
+        (name (pie-package-package pp))
+        (deps (pie-package-deps pp)))
+    (when (and (pie--fetched-p pp)
+               (or (not (pie--built-p pp))
+                   buildp))
+      (message "build package %s" name)
+      (delete-directory build-dir t)
+      (make-directory build-dir t)
+      (copy-directory dir build-dir t t t)
+      (let ((default-directory build-dir))
+        (if build
+            (funcall build build-dir)
+          (pie-default-build pp)))
+      (message "Finish building %s" name))))
+
 (defun pie--install-package (pp)
   (let ((dir (pie-package-dir pp))
         (build-dir (pie-package-build-dir pp))
@@ -256,19 +270,8 @@ Usage:
       (pie--fetch-package pp)
       (setq buildp t))
     ;; build package
-    (when (and (pie--fetched-p pp)
-               (or (not (pie--built-p pp))
-                   buildp))
-      (message "build package %s" name)
-      (delete-directory build-dir t)
-      (make-directory build-dir t)
-      (copy-directory dir build-dir t t t)
-      (let ((default-directory build-dir))
-        (if build
-            (funcall build build-dir)
-          ;; (add-to-list 'load-path lisp-dir)
-          (pie-default-build pp)))
-      (message "Finish installing %s" name))))
+    (pie--build-package pp buildp)
+    (message "Finish installing %s" name)))
 
 (defun pie--git-clone (url dir rev)
   (let (cmd)
@@ -313,11 +316,13 @@ Usage:
          (default-directory lisp-dir)
          (files (directory-files lisp-dir t "\\.el$"))
          (autoloads (concat (file-name-nondirectory (directory-file-name lisp-dir)) "-autoloads.el")))
+    (add-to-list 'load-path lisp-dir)
     (cl-dolist (file files)
       (when (not (string-suffix-p ".dir-locals.el" file))
         (byte-compile-file file)))
-    (make-directory-autoloads lisp-dir autoloads)))
+    (make-directory-autoloads lisp-dir (expand-file-name autoloads lisp-dir))))
 
+;;;###autoload
 (defun pie-update-package ()
   "Update a package in `pie--packages'."
   (interactive)
@@ -348,7 +353,23 @@ Usage:
             (delete-directory dir-tmp t)
             (pie--install-package pp-tmp)
             (delete-directory dir t)
-            (rename-file dir-tmp dir))
+            (rename-file dir-tmp dir)
+            ;; build
+            (pie--build-package pp t))
+        (user-error "No package named %s is defined" name)))))
+
+;;;###autoload
+(defun pie-rebuild-package ()
+  (interactive)
+  (let (name
+        pp
+        packages)
+    (setq packages (hash-table-keys pie--packages))
+    (setq name (completing-read "Package Name: " packages))
+    (when name
+      (setq pp (gethash name pie--packages))
+      (if pp
+          (pie--build-package pp t)
         (user-error "No package named %s is defined" name)))))
 
 (defun pie--active-package (pp)
