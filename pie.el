@@ -273,12 +273,22 @@ Usage:
     (pie--build-package pp buildp)
     (message "Finish installing %s" name)))
 
-(defun pie--git-clone (url dir rev)
+(defun pie--git-clone (url dir branch rev)
   (let (cmd)
-    (if rev
-        (setq cmd (concat "git --no-pager clone " (pie--git-depth) " --branch " rev " --single-branch " url " " dir))
-      (setq cmd (concat "git --no-pager clone " (pie--git-depth) url " " dir)))
-    (call-process-shell-command cmd nil nil)))
+    (cond
+     (rev
+      (if branch
+          (setq cmd (concat "git --no-pager clone  --branch " branch " --single-branch " url " " dir))
+        (setq cmd (concat "git --no-pager clone " url " " dir)))
+      (when (zerop (call-process-shell-command cmd nil nil))
+        (let ((default-directory dir))
+          (call-process-shell-command (concat "git checkout " rev)))))
+     (branch
+      (setq cmd (concat "git --no-pager clone " (pie--git-depth) " --branch " branch " --single-branch " url " " dir))
+      (call-process-shell-command cmd nil nil))
+     (t
+      (setq cmd (concat "git --no-pager clone " (pie--git-depth) url " " dir))
+      (call-process-shell-command cmd nil nil)))))
 
 (defun pie--download (url dir)
   (let (name
@@ -300,12 +310,11 @@ Usage:
       (make-directory dir t))
     (cond
      ((eq backend 'Git)
-      (pie--git-clone url dir (or (and (not (eq rev :last-release)) rev) branch)))
+      (pie--git-clone url dir branch rev))
      ((eq backend 'http)
       (pie--download url dir))
      (t
-      (vc-clone url backend dir
-                (or (and (not (eq rev :last-release)) rev) branch))))
+      (vc-clone url backend dir branch)))
     (if (not (pie--fetched-p pp))
         (error "Failed to clone %s from %s" name url)
       (message "Finish fetching %s" name))))
