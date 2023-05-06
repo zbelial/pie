@@ -111,6 +111,10 @@ the `clone' function."
 (defvar pie--packages (make-hash-table :test #'equal)
   "key is the package name, value is an instance of `pie-package'")
 
+(defvar pie--activate-cache (make-hash-table :test #'equal)
+  "key is the package name, value is 0 or 1, where 0 means a package has been activated,
+but is during rebuilding, 1 means a package has been activeted.")
+
 (cl-defstruct pie-package
   (package) ;; string
   (url) ;; string
@@ -127,7 +131,8 @@ the `clone' function."
 (defun pie--add-to-packages (pp)
   (let ((package (pie-package-package pp))
         (url (pie-package-url pp)))
-    (puthash package pp pie--packages)))
+    (puthash package pp pie--packages)
+    nil))
 
 ;;;###autoload
 (cl-defun pie (package url &key backend rev branch build deps lisp-dir)
@@ -340,6 +345,7 @@ Usage:
       (setq pp (gethash name pie--packages))
       (if pp
           (progn
+            (remhash name pie--activate-cache)
             ;; first, clone the package to a tmp directory, then
             ;; delete the original directory and rename the tmp directory
             (setq dir (pie-package-dir pp))
@@ -374,16 +380,26 @@ Usage:
     (when name
       (setq pp (gethash name pie--packages))
       (if pp
-          (pie--build-package pp t)
+          (progn
+            (pie--build-package pp t)
+            (puthash name 0 pie--activate-cache)
+            (pie--active-package pp))
         (user-error "No package named %s is defined" name)))))
 
 (defun pie--active-package (pp)
-  (let* ((lisp-dir (pie-package-lisp-dir pp))
-         (autoloads (expand-file-name (concat (file-name-nondirectory (directory-file-name lisp-dir)) "-autoloads.el") lisp-dir)))
-    (when (pie--built-p pp)
-      (add-to-list 'load-path lisp-dir)
-      (when (file-exists-p autoloads)
-        (load-file autoloads)))))
+  (let* ((name (pie-package-package pp))
+         (cache (gethash name pie--activate-cache)))
+    (when (and (or (null cache)
+                   (= cache 0))
+               (pie--built-p pp))
+      (let* ((lisp-dir (pie-package-lisp-dir pp))
+             (autoloads (expand-file-name (concat (file-name-nondirectory (directory-file-name lisp-dir)) "-autoloads.el") lisp-dir)))
+        (when (null cache)
+          (add-to-list 'load-path lisp-dir))
+        ;; FIXME unload package-autoloads?
+        (when (file-exists-p autoloads)
+          (load-file autoloads)))
+      (puthash name 1 pie--activate-cache))))
 
 ;;;###autoload
 (defun pie-install-packages ()
