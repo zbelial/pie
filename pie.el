@@ -97,16 +97,15 @@ the `clone' function."
   :type 'integer
   :group 'pie)
 
-(defcustom pie-directory (expand-file-name "pie" user-emacs-directory)
-  "The directory used to store packages."
+(defcustom pie-repos-directory (expand-file-name "pie/repos" user-emacs-directory)
+  "The directory used to store packages' repos."
   :type  'directory
   :group 'pie)
 
-(defun pie--builds-directory ()
-  (expand-file-name "builds" pie-directory))
-
-(defun pie--repos-directory ()
-  (expand-file-name "repos" pie-directory))
+(defcustom pie-builds-directory (expand-file-name "pie/builds" user-emacs-directory)
+  "The directory used to store built packages."
+  :type  'directory
+  :group 'pie)
 
 (defvar pie--packages (make-hash-table :test #'equal)
   "key is the package name, value is an instance of `pie-package'")
@@ -121,6 +120,7 @@ but is during rebuilding, 1 means a package has been activeted.")
   (backend) ;; symbol
   (branch) ;; string
   (rev) ;; string, if provided, rev will override branch
+  (depth) ;; used with git clone. If specified, the value should be t (all history) or a positive integer. If omitted, use `pie-git-depth'
   (build) ;; function
   (deps) ;; list of symbol
   (dir) ;; which directory this package is/will be cloned to.
@@ -135,7 +135,7 @@ but is during rebuilding, 1 means a package has been activeted.")
     nil))
 
 ;;;###autoload
-(cl-defun pie (package url &key backend rev branch build deps lisp-dir)
+(cl-defun pie (package url &key backend rev branch depth build deps lisp-dir)
   "Fetch a package and (optionally) build it for using with Emacs.
 
 Usage:
@@ -149,6 +149,9 @@ Usage:
                  (or `pie-vc-default-backend' if no backend can be determined).
 :branch          String, optionally. Which branch to checkout after cloning the repository.
 :rev             String, optionally. Which revision to clone. Has higher priority than :branch.
+:depth           t or a positve nubmer, optionally. Only works with git for now.
+                 If specified, the value should be t (all history) or a positive integer.
+                 If omitted, use `pie-git-depth'
 :build           Function, optionally. Specify how to build the package.
                  If not specified, use `pie-default-build'.
 :deps            List of string or a function returning a list of string, optionally.
@@ -156,9 +159,6 @@ Usage:
 "
   (let (pp
         (backend backend)
-        (rev rev)
-        (branch branch)
-        (build build)
         (deps deps)
         (lisp-dir lisp-dir)
         dir build-dir)
@@ -169,8 +169,8 @@ Usage:
     (when (and (not (member backend vc-handled-backends))
                (not (eq backend 'http)))
       (user-error "Invalid backend %s" backend))
-    (setq dir (expand-file-name package (pie--repos-directory)))
-    (setq build-dir (expand-file-name package (pie--builds-directory)))
+    (setq dir (expand-file-name package pie-repos-directory))
+    (setq build-dir (expand-file-name package pie-builds-directory))
     (if lisp-dir
         (setq lisp-dir (expand-file-name lisp-dir build-dir))
       (setq lisp-dir build-dir))
@@ -181,14 +181,13 @@ Usage:
                                :rev rev
                                :backend backend
                                :branch branch
+                               :depth depth
                                :build build
                                :deps deps
                                :dir dir
                                :build-dir build-dir
                                :lisp-dir lisp-dir))
     (pie--add-to-packages pp)))
-;; (pie "pie" "https://bitbucket.org/zbelial/pie" :backend 'Git :deps (lambda () '("abc")))
-;; (pie "stock" "https://bitbucket.org/zbelial/stock" :backend 'Git)
 
 (defun pie--installed-p (pp)
   "Check whether package `pp' has been fetched. `pp' is an instance of `pie-package'"
@@ -223,13 +222,21 @@ Usage:
         (pie--install-package pp)
       (user-error "No package named %s is defined." name))))
 
-(defun pie--git-depth ()
-  (let ((depth ""))
-    (when (and pie-git-depth
-               (> pie-git-depth 0))
-      (setq depth (format " --depth %d " pie-git-depth)))
-    depth))
-;; (pie--git-depth)
+(defun pie--git-depth (&optional depth)
+  (let ((depth-str "")
+        (depth depth))
+    (cond
+     ((eq depth t)
+      ;; full history
+      )
+     ((and depth
+           (> depth 0))
+      (setq depth-str (format " --depth %d " depth)))
+     (t
+      (when (and pie-git-depth
+                 (> pie-git-depth 0))
+        (setq depth-str (format " --depth %d " pie-git-depth)))))
+    depth-str))
 
 (defun pie--build-package (pp &optional buildp)
   (let ((dir (pie-package-dir pp))
@@ -252,11 +259,7 @@ Usage:
       (message "Finish building %s" name))))
 
 (defun pie--install-package (pp)
-  (let ((dir (pie-package-dir pp))
-        (build-dir (pie-package-build-dir pp))
-        (lisp-dir (pie-package-lisp-dir pp))
-        (build (pie-package-build pp))
-        (name (pie-package-package pp))
+  (let ((name (pie-package-package pp))
         (deps (pie-package-deps pp))
         buildp)
     ;; install all deps first
@@ -271,7 +274,7 @@ Usage:
     (pie--build-package pp buildp)
     (message "Finish installing %s" name)))
 
-(defun pie--git-clone (url dir branch rev)
+(defun pie--git-clone (url dir branch rev depth)
   (let (cmd)
     (cond
      (rev
@@ -282,10 +285,10 @@ Usage:
         (let ((default-directory dir))
           (call-process-shell-command (concat "git checkout " rev)))))
      (branch
-      (setq cmd (concat "git --no-pager clone " (pie--git-depth) " --branch " branch " --single-branch " url " " dir))
+      (setq cmd (concat "git --no-pager clone " (pie--git-depth depth) " --branch " branch " --single-branch " url " " dir))
       (call-process-shell-command cmd nil nil))
      (t
-      (setq cmd (concat "git --no-pager clone " (pie--git-depth) url " " dir))
+      (setq cmd (concat "git --no-pager clone " (pie--git-depth depth) url " " dir))
       (call-process-shell-command cmd nil nil)))))
 
 (defun pie--download (url dir)
@@ -302,13 +305,14 @@ Usage:
         (rev (pie-package-rev pp))
         (backend (pie-package-backend pp))
         (branch (pie-package-branch pp))
+        (depth (pie-package-depth pp))
         (name (pie-package-package pp)))
     (message "Start to fetch %s" name)
     (unless (file-exists-p dir)
       (make-directory dir t))
     (cond
      ((eq backend 'Git)
-      (pie--git-clone url dir branch rev))
+      (pie--git-clone url dir branch rev depth))
      ((eq backend 'http)
       (pie--download url dir))
      (t
@@ -354,6 +358,7 @@ Usage:
                                            :url (pie-package-url pp)
                                            :rev (pie-package-rev pp)
                                            :backend (pie-package-backend pp)
+                                           :depth (pie-package-depth pp)
                                            :branch (pie-package-branch pp)
                                            :build (pie-package-build pp)
                                            :deps (pie-package-deps pp)
@@ -413,7 +418,6 @@ Usage:
         (message "All packages have been installed."))
     (error
      (message "Error when installing packages: %S" err))))
-;; (pie-install-packages)
 
 
 (provide 'pie)
