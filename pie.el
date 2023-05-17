@@ -97,6 +97,11 @@ the `clone' function."
   :type 'integer
   :group 'pie)
 
+(defcustom pie-activite-package t
+  "Whether activite packages after installing them."
+  :type 'boolean
+  :group 'pie)
+
 (defcustom pie-repos-directory (expand-file-name "pie/repos" user-emacs-directory)
   "The directory used to store packages' repos."
   :type  'directory
@@ -388,7 +393,8 @@ Usage:
           (progn
             (pie--build-package pp t)
             (puthash name 0 pie--activate-cache)
-            (pie--active-package pp))
+            (when pie-activite-package
+              (pie--active-package pp)))
         (user-error "No package named %s is defined" name)))))
 
 (defun pie--active-package (pp)
@@ -414,7 +420,8 @@ Usage:
       (progn
         (cl-dolist (pp (hash-table-values pie--packages))
           (pie--install-package pp)
-          (pie--active-package pp))
+          (when pie-activite-package
+            (pie--active-package pp)))
         (message "All packages have been installed."))
     (error
      (message "Error when installing packages: %S" err))))
