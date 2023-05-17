@@ -140,7 +140,7 @@ but is during rebuilding, 1 means a package has been activeted.")
     nil))
 
 ;;;###autoload
-(cl-defun pie (package url &key backend rev branch depth build deps lisp-dir)
+(cl-defun pie (package url &key backend rev branch depth build deps lisp-dir condition)
   "Fetch a package and (optionally) build it for using with Emacs.
 
 Usage:
@@ -149,24 +149,30 @@ Usage:
      [:keyword [option]]...)
 
 :url             String. The URL of the repository used to fetch the package source.
-:backend         Symbol, optionally. Can be 'http or a VC backend in `vc-handled-backends'.
+:backend         Symbol, optional. Can be 'http or a VC backend in `vc-handled-backends'.
                  If not specified, use `pie-vc-heuristic-alist' to determine the backend
                  (or `pie-vc-default-backend' if no backend can be determined).
-:branch          String, optionally. Which branch to checkout after cloning the repository.
-:rev             String, optionally. Which revision to clone. Has higher priority than :branch.
-:depth           t or a positve nubmer, optionally. Only works with git for now.
+:branch          String, optional. Which branch to checkout after cloning the repository.
+:rev             String, optional. Which revision to clone. Has higher priority than :branch.
+:depth           t or a positve nubmer, optional. Only works with git for now.
                  If specified, the value should be t (all history) or a positive integer.
                  If omitted, use `pie-git-depth'
-:build           Function, optionally. Specify how to build the package.
+:build           Function, optional. Specify how to build the package.
                  If not specified, use `pie-default-build'.
-:deps            List of string or a function returning a list of string, optionally.
-:lisp-dir        String, optionally. Subdirectory name inside the repository.
+:deps            List of string or a function returning a list of string, optional.
+:lisp-dir        String, optional. Subdirectory name inside the repository.
+:condition       A function without any parameter, optional. Only when it (if specified) returns t, this package will be installed.
 "
   (let (pp
         (backend backend)
         (deps deps)
         (lisp-dir lisp-dir)
         dir build-dir)
+    (when (and condition
+               (functionp condition))
+      (when (not (funcall condition))
+        (message "Package [%s] need not to install." package)
+        (cl-return-from pie)))
     (when (null backend)
       (setq backend (or (alist-get url pie-vc-heuristic-alist
                                    nil nil #'string-match-p)
