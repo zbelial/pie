@@ -334,10 +334,12 @@ Usage:
 
 (defun pie-default-build (pp)
   "Compile elisp files in a repository."
-  (let* ((lisp-dir (pie-package-lisp-dir pp))
+  (let* ((name (pie-package-package pp))
+         (lisp-dir (pie-package-lisp-dir pp))
          (default-directory lisp-dir)
          (files (directory-files lisp-dir t "\\.el$"))
-         (autoloads (concat (file-name-nondirectory (directory-file-name lisp-dir)) "-autoloads.el")))
+         (feature (concat name "-autoloads"))
+         (autoloads (concat feature ".el")))
     (add-to-list 'load-path lisp-dir)
     (cl-dolist (file files)
       (when (not (string-suffix-p ".dir-locals.el" file))
@@ -381,7 +383,9 @@ Usage:
                   (delete-directory dir t)
                   (rename-file dir-tmp dir)
                   ;; build
-                  (pie--build-package pp t))
+                  (pie--build-package pp t)
+                  (when pie-activite-package
+                    (pie--active-package pp)))
               (error "Failed to clone %s" name)))
         (user-error "No package named %s is defined" name)))))
 
@@ -405,17 +409,18 @@ Usage:
 
 (defun pie--active-package (pp)
   (let* ((name (pie-package-package pp))
-         (cache (gethash name pie--activate-cache)))
+         (cache (gethash name pie--activate-cache))
+         (feature (concat name "-autoloads")))
     (when (and (or (null cache)
                    (= cache 0))
                (pie--built-p pp))
       (let* ((lisp-dir (pie-package-lisp-dir pp))
-             (autoloads (expand-file-name (concat (file-name-nondirectory (directory-file-name lisp-dir)) "-autoloads.el") lisp-dir)))
-        (when (null cache)
+             (autoloads (expand-file-name (concat feature ".el") lisp-dir)))
+        (ignore-errors (unload-feature (intern feature) t))
+        (when (not (member lisp-dir load-path))
           (add-to-list 'load-path lisp-dir))
-        ;; FIXME unload package-autoloads?
         (when (file-exists-p autoloads)
-          (load-file autoloads)))
+          (require (intern feature))))
       (puthash name 1 pie--activate-cache))))
 
 ;;;###autoload
