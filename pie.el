@@ -389,6 +389,8 @@ Usage:
               (error "Failed to clone %s" name)))
         (user-error "No package named %s is defined" name)))))
 
+(defalias 'pie-install-package #'pie-update-package)
+
 ;;;###autoload
 (defun pie-rebuild-package ()
   (interactive)
