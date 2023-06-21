@@ -265,7 +265,7 @@ Usage:
       (copy-directory dir build-dir t t t)
       (let ((default-directory build-dir))
         (if build
-            (funcall build build-dir)
+            (funcall build pp)
           (pie-default-build pp)))
       (message "Finish building %s" name))))
 
