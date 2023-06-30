@@ -1,0 +1,82 @@
+#+TITLE: PIE - Package Installer for Emacs
+#+AUTHOR: zbelial
+#+EMAIL: zjyzhaojiyang1@gmail.com
+#+STARTUP: overview 
+#+STARTUP: hidestars
+#+STARTUP: latexpreview
+#+CATEGORIES: Emacs Package
+#+DESCRIPTION: DESCRIPTION
+#+Date: 23-06-30
+
+* Introduction
+  Pie is a very simple Package Installer for Emacs.
+
+  I used to use =package.el= (and elpa/melpa etc.), but it has some drawbacks IMO, including:
+  - A single repository may be split into several packages.
+    Some people like it, but not including me.
+  - It does not support optional dependencies.
+
+
+  I've only tested/used it on Linux, maybe there are some problems on Windows and/or Mac.
+* Features    
+
+  Pie supports the following features:
+  - Support cloning a repository or downloading files (e.g. from emacswiki) directly.
+  - Support cloning a particular branch/tag/commit
+  - Support git's shadow clone
+  - Support customized building logic
+  - Support specifying dependencies according to your actual needs
+  - Support generating autoloads files and loading it
+
+* Install and use it
+  Clone this repository to some directory and add it to load-path.
+  
+  Here are some examples.
+
+  #+BEGIN_SRC elisp
+    (require 'pie)
+    (setq pie-repos-directory "/path/to/repos/directory")
+
+    (setq pie-builds-directory "/path/to/builds/directory")
+
+    (pie "s"
+         "https://github.com/magnars/s.el"
+         :branch "1.13.0")
+
+    (pie "bash-completion"
+         "https://github.com/szermatt/emacs-bash-completion"
+         :rev "de2c844")
+
+    (pie "magit"
+         "https://github.com/magit/magit"
+         :lisp-dir "lisp"
+         :deps '("compat" "dash" "with-editor"))
+
+    (pie "lspce"
+         "https://bitbucket.org/zbelial/lspce"
+         :deps '("markdown-mode" "yasnippet")
+         :build #'(lambda (pp)
+                    (let* ((name (pie-package-package pp))
+                           (lisp-dir (pie-package-lisp-dir pp))
+                           (default-directory lisp-dir)
+                           (files (directory-files lisp-dir t "\\.el$"))
+                           (autoloads (concat (file-name-nondirectory (directory-file-name lisp-dir)) "-autoloads.el")))
+                      (shell-command "cargo clean && cargo build --release && ln -s target/release/liblspce_module.so lspce-module.so")
+                      (cl-dolist (file files)
+                        (when (not (string-suffix-p ".dir-locals.el" file))
+                          (byte-compile-file file)))
+                      (make-directory-autoloads lisp-dir autoloads))))
+
+
+  #+END_SRC
+
+* How does it work
+  Let's use a package called ~A~ to explain how pie works.
+  1. It will clone the repository of ~A~ to a directory =repos/A=
+  2. Then It will copy the repository directory into =builds/A= directory
+  3. Use the default/specified building function to build ~A~, and generate a autoload file named =A-autoloads.el=
+     Building happens in the directory =builds/A=
+  4. Add =builds/A= to =load-path= and load the =A-autoloads= file.
+     Actually, for some packages, the directory added to =load-path= is what is specifed by :lisp-dir (see magit example above) 
+
+  
