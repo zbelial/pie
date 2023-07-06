@@ -9,17 +9,18 @@
 #+Date: 23-06-30
 
 * Introduction
-  Pie is a very simple Package Installer for Emacs.
+  Pie is a very simple Package Installer for Emacs. It has much less features than elpaca, straight etc.
 
   I used to use =package.el= (and elpa/melpa etc.), but it has some drawbacks IMO, including:
   - A single repository may be split into several packages.
     Some people like it, but not including me.
   - It does not support optional dependencies.
+    When I say optional dependency, I mean, for example, package A depends on B or C to get nearly identical functionality, but you don't need them at the same time. But when using package + (m)elpa, you need to install both B and C. Some packages on melpa have this kind of problem, but I forget their names.
+    But I must admit it's a little unfair to compare package.el and pie in this way, because when using pie, you write recipes yourself, but when using package.el, you cannot control how a recipe of a package is written.
 
+  I've only tested/used it with Emacs 28.2 on Linux, maybe there are some problems on Windows and/or Mac.
 
-  I've only tested/used it on Linux, maybe there are some problems on Windows and/or Mac.
-* Features    
-
+* Features
   Pie supports the following features:
   - Support cloning a repository or downloading files (e.g. from emacswiki) directly.
   - Support cloning a particular branch/tag/commit
@@ -70,6 +71,8 @@
 
   #+END_SRC
 
+* All the keywords
+* All the defcustom
 * How does it work
   Let's use a package called ~A~ to explain how pie works.
   1. It will clone the repository of ~A~ to a directory =repos/A=
@@ -79,4 +82,10 @@
   4. Add =builds/A= to =load-path= and load the =A-autoloads= file.
      Actually, for some packages, the directory added to =load-path= is what is specifed by :lisp-dir (see magit example above) 
 
+  
+* Some notes
+** Minimal version of Emacs that pie supports
+   I developed, tested and used pie with Emacs 28.2, so I wrote down that in the =Package-Requires:= , but it should work together with older versions (maybe with some small changes).
+* License
+  GPLv3
   
