@@ -350,7 +350,7 @@ DEPTH determine how many commits will be cloned."
            (member backend vc-handled-backends))
       (vc-clone url backend dir branch))
      (t
-      (error "")))
+      (error "Unsupported backend %s" backend)))
     (if (not (pie--fetched-p pp))
         (error "Failed to clone %s from %s" name url)
       (message "Finish fetching %s" name))))

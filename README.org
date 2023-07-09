@@ -1,6 +1,6 @@
 #+TITLE: PIE - Package Installer for Emacs
 #+AUTHOR: zbelial
-#+EMAIL: zjyzhaojiyang1@gmail.com
+#+EMAIL: zjyzhaojiyang@gmail.com
 #+STARTUP: overview 
 #+STARTUP: hidestars
 #+STARTUP: latexpreview
@@ -9,7 +9,7 @@
 #+Date: 23-06-30
 
 * Introduction
-  Pie is a very simple Package Installer for Emacs. It has much less features than elpaca, straight etc.
+  Pie is a very simple Package Installer for Emacs. It has less features than Elpaca, Straight etc.
 
   I used to use =package.el= (and elpa/melpa etc.), but it has some drawbacks IMO, including:
   - A single repository may be split into several packages.
@@ -85,7 +85,9 @@
   
 * Some notes
 ** Minimal version of Emacs that pie supports
-   I developed, tested and used pie with Emacs 28.2, so I wrote down that in the =Package-Requires:= , but it should work together with older versions (maybe with some small changes).
+   When I started this project, I was using Emacs 29.0.51.
+   Then I switched back to Emacs 28.2, leaving a function =vc-clone=, which appeared first in Emacs 29, in the code. And pie will check its existence before using it.
+   I mean, pie should work well in older versions of Emacs, but if you use Emacs older than 29.0.50, pie only supports Git and Http.
 * License
   GPLv3
   
