@@ -305,7 +305,11 @@ Usage:
 If REV is specified, fetch that commit.
 If BRANCH is specified, fetch that branch.
 DEPTH determine how many commits will be cloned."
-  (let (cmd)
+  (let (cmd
+        (url (shell-quote-argument url))
+        (dir (shell-quote-argument dir))
+        (branch (when branch (shell-quote-argument branch)))
+        (rev (when rev (shell-quote-argument rev))))
     (cond
      (rev
       (if branch
