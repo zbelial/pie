@@ -72,7 +72,69 @@
   #+END_SRC
 
 * All the keywords
+** backend
+   Symbol, optional.
+
+   Which BACKEND to clone. Should be ~'http~ or a VC backend in ~vc-handled-backends~.
+
+   If not specified, use ~pie-vc-heuristic-alist~ to determine the value, (or ~pie-vc-default-backend~ if no backend can be determined).
+** branch
+   String, optional.
+
+   Which BRANCH or tag to check out.
+** rev
+   String, optional.
+
+   Which REV to clone.  Has higher priority than ~branch~.
+** depth
+   t or a positve nubmer, optional.
+
+   Only works with git for now. If specified, the value should be t (all history), or a positive integer. If omitted, use ~pie-git-depth~.
+** build
+   Function, optional.
+
+   Specify how to build the package. If not specified, use ~pie-default-build~.
+   
+   There are three different build functions built-in pie, ~pie-empty-build~, ~pie-autoloads-build~ and ~pie-default-build~. 
+** deps
+   List of string or a function returning a list of string. Optional.
+** lisp-dir
+   String, optional.
+
+   Subdirectory containing elisp files inside the repository.
+** build-type
+   If it's ~'repo~, then build the package in the repos directory, aka ~pie-repos-directory/<pkg>~.
+
+   Else, build it in the builds directory, aka ~pie-builds-directory/<pkg>~.
+** condition
+   A function without any parameter, optional.
+
+   Only when it (if specified) returns t, this package will be installed.  
 * All the defcustom
+** pie-vc-heuristic-alist
+   Heuristic mapping URL regular expressions to VC backends.
+** pie-vc-default-backend
+   Default: 'Git.
+
+   Default VC backend used when cloning a package repository. If no repository type was specified or could be guessed by ~pie-vc-heuristic-alist~, this is the default VC backend used as fallback. The value must be a member of ~vc-handled-backends~ and the named backend must implement the ~clone~ function.
+** pie-git-depth
+   Default: 1.
+
+   Default depth used with git backend.
+
+   If no depth is specified explicitly, this value will be used.
+** pie-activite-package
+   Default: t.
+
+   Whether activite packages after installing them.
+** pie-repos-directory
+   Default: ~/.emacs.d/pie/repos.
+   
+   The directory used to store packages' repos.
+** pie-builds-directory
+   Default: ~/.emacs.d/pie/builds.
+
+   The directory used to store built packages.
 * How does it work
   Let's use a package called ~A~ to explain how pie works.
   1. It will clone the repository of ~A~ to a directory =repos/A=
@@ -82,7 +144,6 @@
   4. Add =builds/A= to =load-path= and load the =A-autoloads= file.
      Actually, for some packages, the directory added to =load-path= is what is specifed by :lisp-dir (see magit example above) 
 
-  
 * Some notes
 ** Minimal version of Emacs that pie supports
    When I started this project, I was using Emacs 29.0.51.

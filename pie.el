@@ -85,7 +85,7 @@
   "Default VC backend used when cloning a package repository.
 If no repository type was specified or could be guessed by
 `pie-vc-heuristic-alist', this is the default VC backend
-used as fallback.  The value must be a member of
+used as fallback. The value must be a member of
 `vc-handled-backends' and the named backend must implement
 the `clone' function."
   :type `(choice ,@(mapcar (lambda (b) (list 'const b))
@@ -93,7 +93,8 @@ the `clone' function."
   :version "28.2")
 
 (defcustom pie-git-depth 1
-  "If loss percent is higher than this, display in a particular color."
+  "Default depth used with git backend.
+If no depth is specified explicitly, this value will be used."
   :type 'integer
   :group 'pie)
 
@@ -129,9 +130,10 @@ but is during rebuilding, 1 means a package has been activeted.")
   (depth) ;; used with git clone. If specified, the value should be t (all history) or a positive integer. If omitted, use `pie-git-depth'
   (build) ;; function
   (deps) ;; list of symbol
-  (dir) ;; which directory this package is/will be cloned to.
+  (repo-dir) ;; which directory this package is/will be cloned to.
   (build-dir) ;; which directory this package is/will be installed to.
   (lisp-dir) ;; optional, which directory elisp files are in
+  (build-type) ;; optional
   )
 
 (defun pie--add-to-packages (pp)
@@ -141,7 +143,7 @@ but is during rebuilding, 1 means a package has been activeted.")
     nil))
 
 ;;;###autoload
-(cl-defun pie (package url &key backend rev branch depth build deps lisp-dir condition)
+(cl-defun pie (package url &key backend rev branch depth build deps lisp-dir condition build-type)
   "Fetch PACKAGE and (optionally) build it for using with Emacs.
 
 Usage:
@@ -158,7 +160,7 @@ Usage:
                  to determine the value,
                  (or `pie-vc-default-backend' if no backend can be determined).
 :branch          String, optional.
-                 Which BRANCH or tag to checkout.
+                 Which BRANCH or tag to check out.
 :rev             String, optional.
                  Which REV to clone.  Has higher priority than :branch.
 :depth           t or a positve nubmer, optional.
@@ -173,14 +175,14 @@ Usage:
                  Optional.
 :lisp-dir        String, optional.
                  Subdirectory containing elisp files inside the repository.
+:build-type      If it's 'repo, then build the package in the repos directory. 
+                 Else, build it in the builds directory.
 :condition       A function without any parameter, optional.
                  Only when it (if specified) returns t,
                  this package will be installed."
   (let (pp
-        (backend backend)
-        (deps deps)
-        (lisp-dir lisp-dir)
-        dir build-dir)
+        repo-dir
+        build-dir)
     (when (and condition
                (functionp condition))
       (when (not (funcall condition))
@@ -193,8 +195,10 @@ Usage:
     (when (and (not (member backend vc-handled-backends))
                (not (eq backend 'http)))
       (user-error "Invalid backend %s" backend))
-    (setq dir (expand-file-name package pie-repos-directory))
-    (setq build-dir (expand-file-name package pie-builds-directory))
+    (setq repo-dir (expand-file-name package pie-repos-directory))
+    (if (eq build-type 'repo)
+        (setq build-dir repo-dir)
+      (setq build-dir (expand-file-name package pie-builds-directory)))
     (if lisp-dir
         (setq lisp-dir (expand-file-name lisp-dir build-dir))
       (setq lisp-dir build-dir))
@@ -208,8 +212,9 @@ Usage:
                                :depth depth
                                :build build
                                :deps deps
-                               :dir dir
+                               :repo-dir repo-dir
                                :build-dir build-dir
+                               :build-type build-type
                                :lisp-dir lisp-dir))
     (pie--add-to-packages pp)))
 
@@ -222,7 +227,7 @@ Usage:
 (defun pie--fetched-p (pp)
   "Check whether package PP has been fetched.  PP is an instance of `pie-package'."
   (when pp
-    (let ((dir (pie-package-dir pp)))
+    (let ((dir (pie-package-repo-dir pp)))
       (and dir
            (file-directory-p dir)
            (not (directory-empty-p dir))))))
@@ -266,7 +271,8 @@ Usage:
 
 (defun pie--build-package (pp &optional buildp)
   "Build package PP.  If BUILDP is t, build forcefully."
-  (let ((dir (pie-package-dir pp))
+  (let ((dir (pie-package-repo-dir pp))
+        (build-type (pie-package-build-type pp))
         (build-dir (pie-package-build-dir pp))
         (build (pie-package-build pp))
         (name (pie-package-package pp)))
@@ -274,9 +280,10 @@ Usage:
                (or (not (pie--built-p pp))
                    buildp))
       (message "build package %s" name)
-      (delete-directory build-dir t)
-      (make-directory build-dir t)
-      (copy-directory dir build-dir t t t)
+      (when (not (eq build-type 'repo))
+        (delete-directory build-dir t)
+        (make-directory build-dir t)
+        (copy-directory dir build-dir t t t))
       (let ((default-directory build-dir))
         (if build
             (funcall build pp)
@@ -335,7 +342,7 @@ DEPTH determine how many commits will be cloned."
 
 (defun pie--fetch-package (pp)
   "Fetch package PP, where PP is an instance of `pie-package'."
-  (let ((dir (pie-package-dir pp))
+  (let ((dir (pie-package-repo-dir pp))
         (url (pie-package-url pp))
         (rev (pie-package-rev pp))
         (backend (pie-package-backend pp))
@@ -358,6 +365,19 @@ DEPTH determine how many commits will be cloned."
     (if (not (pie--fetched-p pp))
         (error "Failed to clone %s from %s" name url)
       (message "Finish fetching %s" name))))
+
+(defun pie-empty-build (pp)
+  "Do nothing.")
+
+(defun pie-autoloads-build (pp)
+  "Just generate autoloads files."
+  (let* ((name (pie-package-package pp))
+         (lisp-dir (pie-package-lisp-dir pp))
+         (default-directory lisp-dir)
+         (feature (concat name "-autoloads"))
+         (autoloads (concat feature ".el")))
+    (add-to-list 'load-path lisp-dir)
+    (make-directory-autoloads lisp-dir (expand-file-name autoloads lisp-dir))))
 
 (defun pie-default-build (pp)
   "Compile elisp files of PP."
@@ -392,7 +412,7 @@ DEPTH determine how many commits will be cloned."
             (remhash name pie--activate-cache)
             ;; first, clone the package to a tmp directory, then
             ;; delete the original directory and rename the tmp directory
-            (setq dir (pie-package-dir pp))
+            (setq dir (pie-package-repo-dir pp))
             (setq dir-tmp (concat dir "-tmp"))
             (setq pp-tmp (make-pie-package :package (pie-package-package pp)
                                            :url (pie-package-url pp)
@@ -402,7 +422,7 @@ DEPTH determine how many commits will be cloned."
                                            :branch (pie-package-branch pp)
                                            :build (pie-package-build pp)
                                            :deps (pie-package-deps pp)
-                                           :dir dir-tmp))
+                                           :repo-dir dir-tmp))
             (delete-directory dir-tmp t)
             (pie--fetch-package pp-tmp)
             (if (pie--fetched-p pp-tmp)
