@@ -113,7 +113,30 @@ If no depth is specified explicitly, this value will be used."
   :type  'directory
   :group 'pie)
 
+(cl-defstruct pie-package
+  (package) ;; string
+  (name) ;; string, with same content with package
+  (url) ;; string
+  (backend) ;; symbol
+  (branch) ;; string
+  (rev) ;; string, if provided, rev will override branch
+  (depth) ;; used with git clone. If specified, the value should be t (all history) or a positive integer. If omitted, use `pie-git-depth'
+  (build) ;; function
+  (deps) ;; list of package names
+  (for) ;; which packages depend on this package
+  (repo-dir) ;; which directory this package is/will be cloned to.
+  (build-dir) ;; which directory this package is/will be installed to.
+  (lisp-dir) ;; optional, which directory elisp files are in
+  (build-type) ;; optional
+  )
+
+(defvar pie--to-install-packages (make-hash-table :test #'equal)
+  "Key is the package name, value is an instance of `pie-package'.")
+
 (defvar pie--packages (make-hash-table :test #'equal)
+  "Key is the package name, value is an instance of `pie-package'.")
+
+(defvar pie--undetermined-packages (make-hash-table :test #'equal)
   "Key is the package name, value is an instance of `pie-package'.")
 
 (defvar pie--activate-cache (make-hash-table :test #'equal)
@@ -121,29 +144,30 @@ If no depth is specified explicitly, this value will be used."
 value is 0 or 1, where 0 means a package has been activated,
 but is during rebuilding, 1 means a package has been activeted.")
 
-(cl-defstruct pie-package
-  (package) ;; string
-  (url) ;; string
-  (backend) ;; symbol
-  (branch) ;; string
-  (rev) ;; string, if provided, rev will override branch
-  (depth) ;; used with git clone. If specified, the value should be t (all history) or a positive integer. If omitted, use `pie-git-depth'
-  (build) ;; function
-  (deps) ;; list of symbol
-  (repo-dir) ;; which directory this package is/will be cloned to.
-  (build-dir) ;; which directory this package is/will be installed to.
-  (lisp-dir) ;; optional, which directory elisp files are in
-  (build-type) ;; optional
-  )
+(defun pie-prepare-packages ()
+  (setq pie--packages (make-hash-table :test #'equal)
+        pie--to-install-packages (make-hash-table :test #'equal)
+        pie--undetermined-packages (make-hash-table :test #'equal)
+        pie--activate-cache (make-hash-table :test #'equal)))
 
 (defun pie--add-to-packages (pp)
   "Add package PP to package hash table."
-  (let ((package (pie-package-package pp)))
+  (let ((package (pie-package-package pp))
+        (for (pie-package-for pp))
+        fors)
     (puthash package pp pie--packages)
+    (if (null for)
+        (puthash package pp pie--to-install-packages)
+      (if (functionp for)
+          (setq fors (funcall for))
+        (setq fors for))
+      (if (length= fors 0)
+          (puthash package pp pie--to-install-packages)
+        (puthash package pp pie--undetermined-packages)))
     nil))
 
 ;;;###autoload
-(cl-defun pie (package url &key backend rev branch depth build deps lisp-dir condition build-type)
+(cl-defun pie (package url &key backend rev branch depth build deps lisp-dir condition build-type for)
   "Fetch PACKAGE and (optionally) build it for using with Emacs.
 
 Usage:
@@ -172,6 +196,8 @@ Usage:
                  Specify how to build the package.
                  If not specified, use `pie-default-build'.
 :deps            List of string or a function returning a list of string.
+                 Optional.
+:for             List of string or a function returning a list of string.
                  Optional.
 :lisp-dir        String, optional.
                  Subdirectory containing elisp files inside the repository.
@@ -204,7 +230,8 @@ Usage:
       (setq lisp-dir build-dir))
     (when (functionp deps)
       (setq deps (funcall deps)))
-    (setq pp (make-pie-package :package package
+    (setq pp (make-pie-package :name package
+                               :package package
                                :url url
                                :rev rev
                                :backend backend
@@ -212,6 +239,7 @@ Usage:
                                :depth depth
                                :build build
                                :deps deps
+                               :for for
                                :repo-dir repo-dir
                                :build-dir build-dir
                                :build-type build-type
@@ -474,14 +502,34 @@ DEPTH determine how many commits will be cloned."
           (require (intern feature))))
       (puthash name 1 pie--activate-cache))))
 
+(defun pie--to-install-p (pp)
+  (let (name
+        fors
+        for-pp
+        install-p)
+    (setq name (pie-package-package pp)
+          fors (pie-package-for pp))
+    (if (gethash name pie--to-install-packages)
+        (setq install-p t)
+      (cl-dolist (for fors)
+        (setq for-pp (gethash for pie--packages))
+        (when (and for-pp
+                   (pie--to-install-p for-pp))
+          (setq install-p t)
+          (cl-return))))
+    install-p))
+
 ;;;###autoload
 (defun pie-install-packages ()
   "Fetch all packages in `pie--packages' if they have not been installed.
 Called after the last `pie' invoking."
   (interactive)
+  (cl-dolist (pp (hash-table-values pie--undetermined-packages))
+    (when (pie--to-install-p pp)
+      (puthash (pie-package-name pp) pp pie--to-install-packages)))
   (condition-case err
       (progn
-        (cl-dolist (pp (hash-table-values pie--packages))
+        (cl-dolist (pp (hash-table-values pie--to-install-packages))
           (pie--install-package pp)
           (when pie-activite-package
             (pie--activate-package pp)))
