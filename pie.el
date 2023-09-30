@@ -123,7 +123,7 @@ If no depth is specified explicitly, this value will be used."
   (depth) ;; used with git clone. If specified, the value should be t (all history) or a positive integer. If omitted, use `pie-git-depth'
   (build) ;; function
   (deps) ;; list of package names
-  (for) ;; which packages depend on this package
+  (users) ;; which packages depend on this package
   (repo-dir) ;; which directory this package is/will be cloned to.
   (build-dir) ;; which directory this package is/will be installed to.
   (lisp-dir) ;; optional, which directory elisp files are in
@@ -141,8 +141,8 @@ If no depth is specified explicitly, this value will be used."
 
 (defvar pie--activate-cache (make-hash-table :test #'equal)
   "Key is the package name.
-value is 0 or 1, where 0 means a package has been activated,
-but is during rebuilding, 1 means a package has been activeted.")
+value is 0 or 1, where 0 means a package is being rebuilt,
+1 means a package has been activeted.")
 
 (defun pie-prepare-packages ()
   (setq pie--packages (make-hash-table :test #'equal)
@@ -153,21 +153,19 @@ but is during rebuilding, 1 means a package has been activeted.")
 (defun pie--add-to-packages (pp)
   "Add package PP to package hash table."
   (let ((package (pie-package-package pp))
-        (for (pie-package-for pp))
-        fors)
+        (users (pie-package-users pp)))
     (puthash package pp pie--packages)
-    (if (null for)
+    (if (null users)
         (puthash package pp pie--to-install-packages)
-      (if (functionp for)
-          (setq fors (funcall for))
-        (setq fors for))
-      (if (length= fors 0)
+      (when (functionp users)
+        (setq users (funcall users)))
+      (if (length= users 0)
           (puthash package pp pie--to-install-packages)
         (puthash package pp pie--undetermined-packages)))
     nil))
 
 ;;;###autoload
-(cl-defun pie (package url &key backend rev branch depth build deps lisp-dir condition build-type for)
+(cl-defun pie (package url &key backend rev branch depth build deps lisp-dir condition build-type users)
   "Fetch PACKAGE and (optionally) build it for using with Emacs.
 
 Usage:
@@ -197,7 +195,7 @@ Usage:
                  If not specified, use `pie-default-build'.
 :deps            List of string or a function returning a list of string.
                  Optional.
-:for             List of string or a function returning a list of string.
+:users           List of string or a function returning a list of string.
                  Optional.
 :lisp-dir        String, optional.
                  Subdirectory containing elisp files inside the repository.
@@ -239,7 +237,7 @@ Usage:
                                :depth depth
                                :build build
                                :deps deps
-                               :for for
+                               :users users
                                :repo-dir repo-dir
                                :build-dir build-dir
                                :build-type build-type
@@ -247,7 +245,7 @@ Usage:
     (pie--add-to-packages pp)))
 
 (defun pie--installed-p (pp)
-  "Check whether package PP has been fetched.  PP is an instance of `pie-package'."
+  "Check whether package PP has been installed.  PP is an instance of `pie-package'."
   (and pp
        (pie--fetched-p pp)
        (pie--built-p pp)))
@@ -261,7 +259,7 @@ Usage:
            (not (directory-empty-p dir))))))
 
 (defun pie--built-p (pp)
-  "Check whether package PP has been fetched.  PP is an instance of `pie-package'."
+  "Check whether package PP has been built.  PP is an instance of `pie-package'."
   (when pp
     (let ((build-dir (pie-package-build-dir pp)))
       (and build-dir
@@ -322,11 +320,16 @@ Usage:
   "Install(fetch and then build) package PP."
   (let ((name (pie-package-package pp))
         (deps (pie-package-deps pp))
+        (users (pie-package-users pp))
         buildp)
-    ;; install all deps first
-    (when deps
-      (cl-dolist (dep deps)
-        (pie--install-package-by-name dep)))
+    ;; install packages depending on pp first
+    (when users
+      (cl-dolist (user users)
+        (pie--install-package-by-name user)))
+    ;; ;; install all deps first
+    ;; (when deps
+    ;;   (cl-dolist (dep deps)
+    ;;     (pie--install-package-by-name dep)))
     ;; fetch package
     (unless (pie--fetched-p pp)
       (pie--fetch-package pp)
@@ -442,7 +445,8 @@ DEPTH determine how many commits will be cloned."
             ;; delete the original directory and rename the tmp directory
             (setq dir (pie-package-repo-dir pp))
             (setq dir-tmp (concat dir "-tmp"))
-            (setq pp-tmp (make-pie-package :package (pie-package-package pp)
+            (setq pp-tmp (make-pie-package :name (pie-package-package pp)
+                                           :package (pie-package-package pp)
                                            :url (pie-package-url pp)
                                            :rev (pie-package-rev pp)
                                            :backend (pie-package-backend pp)
@@ -450,6 +454,7 @@ DEPTH determine how many commits will be cloned."
                                            :branch (pie-package-branch pp)
                                            :build (pie-package-build pp)
                                            :deps (pie-package-deps pp)
+                                           :users (pie-package-users pp)
                                            :repo-dir dir-tmp))
             (delete-directory dir-tmp t)
             (pie--fetch-package pp-tmp)
@@ -504,17 +509,17 @@ DEPTH determine how many commits will be cloned."
 
 (defun pie--to-install-p (pp)
   (let (name
-        fors
-        for-pp
+        users
+        user-pp
         install-p)
     (setq name (pie-package-package pp)
-          fors (pie-package-for pp))
+          users (pie-package-users pp))
     (if (gethash name pie--to-install-packages)
         (setq install-p t)
-      (cl-dolist (for fors)
-        (setq for-pp (gethash for pie--packages))
-        (when (and for-pp
-                   (pie--to-install-p for-pp))
+      (cl-dolist (user users)
+        (setq user-pp (gethash user pie--packages))
+        (when (and user-pp
+                   (pie--to-install-p user-pp))
           (setq install-p t)
           (cl-return))))
     install-p))
@@ -526,7 +531,8 @@ Called after the last `pie' invoking."
   (interactive)
   (cl-dolist (pp (hash-table-values pie--undetermined-packages))
     (when (pie--to-install-p pp)
-      (puthash (pie-package-name pp) pp pie--to-install-packages)))
+      (puthash (pie-package-name pp) pp pie--to-install-packages)
+      (remhash (pie-package-name pp) pie--undetermined-packages)))
   (condition-case err
       (progn
         (cl-dolist (pp (hash-table-values pie--to-install-packages))
