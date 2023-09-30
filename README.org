@@ -20,6 +20,8 @@
 
   I've only tested/used it with Emacs 28.2 on Linux, maybe there are some problems on Windows and/or Mac.
 
+* Incompatible changes
+** keyword :deps has been replaced by :users
 * Features
   Pie supports the following features:
   - Support cloning a repository or downloading files (e.g. from emacswiki) directly.
@@ -42,7 +44,8 @@
 
     (pie "s"
          "https://github.com/magnars/s.el"
-         :branch "1.13.0")
+         :branch "1.13.0"
+         :users '("f" "dumb-jump"))
 
     (pie "bash-completion"
          "https://github.com/szermatt/emacs-bash-completion"
@@ -50,12 +53,10 @@
 
     (pie "magit"
          "https://github.com/magit/magit"
-         :lisp-dir "lisp"
-         :deps '("compat" "dash" "with-editor"))
+         :lisp-dir "lisp")
 
     (pie "lspce"
          "https://bitbucket.org/zbelial/lspce"
-         :deps '("markdown-mode" "yasnippet")
          :build #'(lambda (pp)
                     (let* ((name (pie-package-package pp))
                            (lisp-dir (pie-package-lisp-dir pp))
@@ -98,7 +99,8 @@
    Specify how to build the package. If not specified, use ~pie-default-build~.
    
    There are three different build functions built-in pie, ~pie-empty-build~, ~pie-autoloads-build~ and ~pie-default-build~. 
-** deps
+** users
+   Packages that depend on this package.
    List of string or a function returning a list of string. Optional.
 ** lisp-dir
    String, optional.
