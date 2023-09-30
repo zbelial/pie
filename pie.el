@@ -266,14 +266,9 @@ Usage:
            (file-directory-p build-dir)
            (not (directory-empty-p build-dir))))))
 
-(defun pie--installed-by-name-p (name)
-  "Check whether package with NAME has been fetched."
-  (let ((pp (gethash name pie--packages)))
-    (pie--installed-p pp)))
-
 (defun pie--install-package-by-name (name)
   "Install package with name NAME."
-  (let ((pp (gethash name pie--packages)))
+  (let ((pp (gethash name pie--to-install-packages)))
     (if pp
         (pie--install-package pp)
       (user-error "No package named %s is defined" name))))
@@ -326,10 +321,6 @@ Usage:
     (when users
       (cl-dolist (user users)
         (pie--install-package-by-name user)))
-    ;; ;; install all deps first
-    ;; (when deps
-    ;;   (cl-dolist (dep deps)
-    ;;     (pie--install-package-by-name dep)))
     ;; fetch package
     (unless (pie--fetched-p pp)
       (pie--fetch-package pp)
@@ -424,20 +415,27 @@ DEPTH determine how many commits will be cloned."
         (byte-compile-file file)))
     (make-directory-autoloads lisp-dir (expand-file-name autoloads lisp-dir))))
 
+(defun pie--before-install-packages ()
+  (cl-dolist (pp (hash-table-values pie--undetermined-packages))
+    (when (pie--to-install-p pp)
+      (puthash (pie-package-name pp) pp pie--to-install-packages)
+      (remhash (pie-package-name pp) pie--undetermined-packages))))
+
 ;;;###autoload
 (defun pie-update-package ()
-  "Update a package in `pie--packages'."
+  "Update a package in `pie--to-install-packages'."
   (interactive)
+  (pie--before-install-packages)
   (let (name
         pp
         pp-tmp
         packages
         dir
         dir-tmp)
-    (setq packages (hash-table-keys pie--packages))
+    (setq packages (hash-table-keys pie--to-install-packages))
     (setq name (completing-read "Package Name: " packages))
     (when name
-      (setq pp (gethash name pie--packages))
+      (setq pp (gethash name pie--to-install-packages))
       (if pp
           (progn
             (remhash name pie--activate-cache)
@@ -478,10 +476,10 @@ DEPTH determine how many commits will be cloned."
   (let (name
         pp
         packages)
-    (setq packages (hash-table-keys pie--packages))
+    (setq packages (hash-table-keys pie--to-install-packages))
     (setq name (completing-read "Package Name: " packages))
     (when name
-      (setq pp (gethash name pie--packages))
+      (setq pp (gethash name pie--to-install-packages))
       (if pp
           (progn
             (pie--build-package pp t)
@@ -526,13 +524,10 @@ DEPTH determine how many commits will be cloned."
 
 ;;;###autoload
 (defun pie-install-packages ()
-  "Fetch all packages in `pie--packages' if they have not been installed.
+  "Fetch all packages in `pie--to-install-packages' if they have not been installed.
 Called after the last `pie' invoking."
   (interactive)
-  (cl-dolist (pp (hash-table-values pie--undetermined-packages))
-    (when (pie--to-install-p pp)
-      (puthash (pie-package-name pp) pp pie--to-install-packages)
-      (remhash (pie-package-name pp) pie--undetermined-packages)))
+  (pie--before-install-packages)
   (condition-case err
       (progn
         (cl-dolist (pp (hash-table-values pie--to-install-packages))
