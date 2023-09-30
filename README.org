@@ -72,9 +72,7 @@
 
   #+END_SRC
 
-* Keywords
-  These are all of the keywords that function ~pie~ supports.
-  
+* All the keywords
 ** backend
    Symbol, optional.
 
@@ -114,7 +112,7 @@
    A function without any parameter, optional.
 
    Only when it (if specified) returns t, this package will be installed.  
-* Customizable variables
+* All the defcustom
 ** pie-vc-heuristic-alist
    Heuristic mapping URL regular expressions to VC backends.
 ** pie-vc-default-backend
