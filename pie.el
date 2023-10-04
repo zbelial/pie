@@ -122,6 +122,7 @@ value is 0 or 1, where 0 means a package has been activated,
 but is during rebuilding, 1 means a package has been activeted.")
 
 (cl-defstruct pie-package
+  (name) ;; string
   (package) ;; string
   (url) ;; string
   (backend) ;; symbol
@@ -204,7 +205,8 @@ Usage:
       (setq lisp-dir build-dir))
     (when (functionp deps)
       (setq deps (funcall deps)))
-    (setq pp (make-pie-package :package package
+    (setq pp (make-pie-package :name package
+                               :package package
                                :url url
                                :rev rev
                                :backend backend
@@ -219,7 +221,7 @@ Usage:
     (pie--add-to-packages pp)))
 
 (defun pie--installed-p (pp)
-  "Check whether package PP has been fetched.  PP is an instance of `pie-package'."
+  "Check whether package PP has been installed.  PP is an instance of `pie-package'."
   (and pp
        (pie--fetched-p pp)
        (pie--built-p pp)))
@@ -233,7 +235,7 @@ Usage:
            (not (directory-empty-p dir))))))
 
 (defun pie--built-p (pp)
-  "Check whether package PP has been fetched.  PP is an instance of `pie-package'."
+  "Check whether package PP has been built.  PP is an instance of `pie-package'."
   (when pp
     (let ((build-dir (pie-package-build-dir pp)))
       (and build-dir
@@ -414,7 +416,8 @@ DEPTH determine how many commits will be cloned."
             ;; delete the original directory and rename the tmp directory
             (setq dir (pie-package-repo-dir pp))
             (setq dir-tmp (concat dir "-tmp"))
-            (setq pp-tmp (make-pie-package :package (pie-package-package pp)
+            (setq pp-tmp (make-pie-package :name (pie-package-name pp)
+                                           :package (pie-package-package pp)
                                            :url (pie-package-url pp)
                                            :rev (pie-package-rev pp)
                                            :backend (pie-package-backend pp)
