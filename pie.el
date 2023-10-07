@@ -136,6 +136,7 @@ but is during rebuilding, 1 means a package has been activeted.")
   (build-dir) ;; which directory this package is/will be installed to.
   (lisp-dir) ;; optional, which directory elisp files are in
   (build-type) ;; optional
+  (ignore-files) ;; optional, files ignored when building 
   )
 
 (defun pie--add-to-packages (pp)
@@ -145,7 +146,7 @@ but is during rebuilding, 1 means a package has been activeted.")
     nil))
 
 ;;;###autoload
-(cl-defun pie (package url &key backend rev branch depth build deps lisp-dir condition build-type)
+(cl-defun pie (package url &key backend rev branch depth build deps lisp-dir condition build-type ignore-files)
   "Fetch PACKAGE and (optionally) build it for using with Emacs.
 
 Usage:
@@ -179,6 +180,7 @@ Usage:
                  Subdirectory containing elisp files inside the repository.
 :build-type      If it's 'repo, then build the package in the repos directory. 
                  Else, build it in the builds directory.
+:ignore-files    Files (no directory part) that should be ignored when building with `pie-default-build'
 :condition       A function without any parameter, optional.
                  Only when it (if specified) returns t,
                  this package will be installed."
@@ -218,7 +220,8 @@ Usage:
                                :repo-dir repo-dir
                                :build-dir build-dir
                                :build-type build-type
-                               :lisp-dir lisp-dir))
+                               :lisp-dir lisp-dir
+                               :ignore-files ignore-files))
     (pie--add-to-packages pp)))
 
 (defun pie--installed-p (pp)
@@ -275,10 +278,13 @@ Usage:
 (defun pie--build-package (pp &optional buildp)
   "Build package PP.  If BUILDP is t, build forcefully."
   (let ((dir (pie-package-repo-dir pp))
+        (lisp-dir (pie-package-lisp-dir pp))
         (build-type (pie-package-build-type pp))
         (build-dir (pie-package-build-dir pp))
         (build (pie-package-build pp))
         (name (pie-package-package pp)))
+    (when (not (member lisp-dir load-path))
+      (add-to-list 'load-path lisp-dir))
     (when (and (pie--fetched-p pp)
                (or (not (pie--built-p pp))
                    buildp))
@@ -390,11 +396,12 @@ DEPTH determine how many commits will be cloned."
          (lisp-dir (pie-package-lisp-dir pp))
          (default-directory lisp-dir)
          (files (directory-files lisp-dir t "\\.el$"))
+         (ignore-files (append (list ".dir-locals.el") (pie-package-ignore-files pp)))
          (feature (concat name "-autoloads"))
          (autoloads (concat feature ".el")))
     (add-to-list 'load-path lisp-dir)
     (cl-dolist (file files)
-      (when (not (string-suffix-p ".dir-locals.el" file))
+      (when (not (member (file-name-nondirectory file) ignore-files))
         (byte-compile-file file)))
     (make-directory-autoloads lisp-dir (expand-file-name autoloads lisp-dir))))
 
