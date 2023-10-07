@@ -308,6 +308,8 @@ Usage:
       (setq buildp t))
     ;; build package
     (pie--build-package pp buildp)
+    (when pie-activite-package
+      (pie--activate-package pp))
     (message "Finish installing %s" name)))
 
 (defun pie--git-clone (url dir branch rev depth)
@@ -486,9 +488,7 @@ Called after the last `pie' invoking."
   (condition-case err
       (progn
         (cl-dolist (pp (hash-table-values pie--packages))
-          (pie--install-package pp)
-          (when pie-activite-package
-            (pie--activate-package pp)))
+          (pie--install-package pp))
         (message "All packages have been installed."))
     (error
      (message "Error when installing packages: %S" err))))
