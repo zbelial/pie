@@ -36,6 +36,7 @@
   (require 'cl-macs))
 (require 'subr-x)
 (require 'autoload)
+(require 'pie-compat)
 
 (defgroup pie nil
   "Package installer for Emacs."
