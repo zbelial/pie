@@ -256,7 +256,7 @@ Usage:
        ,config)))
 
 ;;;###autoload
-(cl-defmacro pie-use-package (package-name &key disabled pie load-path init config autoloads after)
+(cl-defmacro pie-use-package (package-name &key disabled when pie load-path init config autoloads after)
   "To configure a package by specifying a group of options."
   (declare (indent 1) (debug t))
   (when (and (booleanp disabled)
@@ -266,18 +266,35 @@ Usage:
           (init-result (pie--use-package-init `,init))
           (config-result (pie--use-package-config `,config `,package-name))
           (after-result))
-      (if after
+      (if when
           (progn
-            (setq after-result (pie--use-package-after `,after init-result config-result))
-            `(progn
-               ,load-path-and-pie-result
-               ,@autoloads-result
-               ,after-result))
-        `(progn
-           ,load-path-and-pie-result
-           ,@autoloads-result
-           ,init-result
-           ,config-result)))))
+            (if after
+                (progn
+                  (setq after-result (pie--use-package-after `,after init-result config-result))
+                  `(progn
+                     (when ,when
+                       ,load-path-and-pie-result
+                       ,@autoloads-result
+                       ,after-result))
+                  )
+              `(progn
+                 (when ,when
+                   ,load-path-and-pie-result
+                   ,@autoloads-result
+                   ,init-result
+                   ,config-result))))
+        (if after
+            (progn
+              (setq after-result (pie--use-package-after `,after init-result config-result))
+              `(progn
+                 ,load-path-and-pie-result
+                 ,@autoloads-result
+                 ,after-result))
+          `(progn
+             ,load-path-and-pie-result
+             ,@autoloads-result
+             ,init-result
+             ,config-result))))))
 
 
 (defun pie--installed-p (pp)
