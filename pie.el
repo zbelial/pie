@@ -224,6 +224,92 @@ Usage:
                                :ignore-files ignore-files))
     (pie--add-to-packages pp)))
 
+(defmacro pie--use-package-after (features &rest body)
+  (cl-callf nreverse features)
+  (let ((result `(progn ,@body)))
+    (dolist (f features)
+      (setq result `(with-eval-after-load ',f ,result)))
+    result))
+
+(defun pie--use-package-after1 (features &rest body)
+  (cl-callf nreverse features)
+  (let ((result `(progn ,@body)))
+    (dolist (f features)
+      (setq result `(with-eval-after-load ',f ,result)))
+    result))
+;; (pie--use-package-after1 '(a b) '(setq ab 1) '(setq bc 2))
+
+(defmacro pie--use-package-autoloads (autoloads package)
+  (let ((name (symbol-name package))
+        result)
+    (dolist (al autoloads)
+      (setq result (cons `(autoload ',al ,name nil t) result)))
+    result))
+
+(defun pie--use-package-autoloads1 (autoloads package)
+  (cl-callf nreverse autoloads)
+  (let ((name (symbol-name package))
+        result)
+    (dolist (al autoloads)
+      (setq result (cons `(autoload ',al ,name nil t) result)))
+    result))
+
+(defmacro pie--use-package-load-path-and-pie (load-path pie)
+  (if load-path
+      `(add-to-list 'load-path ,load-path)
+    (when pie
+      `(pie--install-package-by-name ,pie))))
+
+(defun pie--use-package-load-path-and-pie1 (load-path pie)
+  (if load-path
+      `(add-to-list 'load-path ,load-path)
+    (when pie
+      `(pie--install-package-by-name ,pie))))
+
+(defmacro pie--use-package-init (init)
+  (when init
+    `(progn
+       ,init)))
+
+(defun pie--use-package-init1 (init)
+  (when init
+    init))
+
+(defmacro pie--use-package-config (config package-name)
+  (when config
+    `(with-eval-after-load ',package-name
+       ,config)))
+
+(defun pie--use-package-config1 (config package-name)
+  (when config
+    `(with-eval-after-load ',package-name
+       ,config)))
+
+;;;###autoload
+(cl-defmacro pie-use-package (package-name &key disabled pie load-path init config autoloads after)
+  "To configure a package by specifying a group of options."
+  (declare (indent 1) (debug t))
+  (when (and (booleanp disabled)
+             (not disabled))
+    (let ((autoloads-result (pie--use-package-autoloads1 `,autoloads `,package-name))
+          (load-path-and-pie-result (pie--use-package-load-path-and-pie1 `,load-path `,pie))
+          (init-result (pie--use-package-init1 `,init))
+          (config-result (pie--use-package-config1 `,config `,package-name))
+          (after-result))
+      (if after
+          (progn
+            (setq after-result (pie--use-package-after1 `,after init-result config-result))
+            `(progn
+               ,load-path-and-pie-result
+               ,@autoloads-result
+               ,after-result))
+        `(progn
+           ,load-path-and-pie-result
+           ,@autoloads-result
+           ,init-result
+           ,config-result)))))
+
+
 (defun pie--installed-p (pp)
   "Check whether package PP has been installed.  PP is an instance of `pie-package'."
   (and pp
