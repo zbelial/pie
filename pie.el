@@ -224,9 +224,17 @@ Usage:
                                :ignore-files ignore-files))
     (pie--add-to-packages pp)))
 
+(defsubst pie--use-package-concat (&rest elems)
+  "Delete all empty lists from ELEMS (nil or (list nil)), and append them."
+  (macroexp-progn (apply #'list (delete nil (delete (list nil) elems)))))
+
+(defsubst pie--use-package-concat2 (elems)
+  "Delete all empty lists from ELEMS (nil or (list nil)), and append them."
+  (macroexp-progn (apply #'list (delete nil (delete (list nil) elems)))))
+
 (defun pie--use-package-after (features &rest body)
   (cl-callf nreverse features)
-  (let ((result `(progn ,@body)))
+  (let ((result (pie--use-package-concat2 body)))
     (dolist (f features)
       (setq result `(with-eval-after-load ',f ,result)))
     result))
@@ -237,14 +245,20 @@ Usage:
   (let ((name (symbol-name package))
         result)
     (dolist (al autoloads)
-      (setq result (cons `(autoload ',al ,name nil t) result)))
-    result))
+      (push `(autoload ',al ,name nil t) result))
+    (macroexp-progn result)))
 
-(defun pie--use-package-load-path-and-pie (load-path pie)
-  (if load-path
-      `(add-to-list 'load-path ,load-path)
-    (when pie
-      `(pie--install-package-by-name ,pie))))
+(defun pie--use-package-load-path-and-pie (load-path pie package-name)
+  (let ((pie-name (cond
+                   ((stringp pie) pie)
+                   ((and (booleanp pie) pie)
+                    (symbol-name package-name))
+                   (t
+                    (symbol-name pie)))))
+    (if load-path
+        `(add-to-list 'load-path ,load-path)
+      (when pie
+        `(pie--install-package-by-name ,pie-name)))))
 
 (defun pie--use-package-init (init)
   (when init
@@ -256,46 +270,47 @@ Usage:
        ,config)))
 
 ;;;###autoload
-(cl-defmacro pie-use-package (package-name &key disabled when pie load-path init config autoloads after)
+(cl-defmacro pie-use-package (package-name &key disabled when pie load-path init config autoloads after demand)
   "To configure a package by specifying a group of options."
   (declare (indent 1) (debug t))
   (when (and (booleanp disabled)
              (not disabled))
     (let ((autoloads-result (pie--use-package-autoloads `,autoloads `,package-name))
-          (load-path-and-pie-result (pie--use-package-load-path-and-pie `,load-path `,pie))
+          (load-path-and-pie-result (pie--use-package-load-path-and-pie `,load-path `,pie `,package-name))
           (init-result (pie--use-package-init `,init))
+          (demand-result (when demand `(require ',package-name)))
           (config-result (pie--use-package-config `,config `,package-name))
           (after-result))
       (if when
           (progn
             (if after
                 (progn
-                  (setq after-result (pie--use-package-after `,after init-result config-result))
-                  `(progn
-                     (when ,when
-                       ,load-path-and-pie-result
-                       ,@autoloads-result
-                       ,after-result))
-                  )
-              `(progn
-                 (when ,when
-                   ,load-path-and-pie-result
-                   ,@autoloads-result
-                   ,init-result
-                   ,config-result))))
+                  (setq after-result (pie--use-package-after `,after init-result demand-result config-result))
+                  `(when ,when
+                     ,(pie--use-package-concat
+                       load-path-and-pie-result
+                       autoloads-result
+                       after-result)))
+              `(when ,when
+                 ,(pie--use-package-concat
+                   load-path-and-pie-result
+                   autoloads-result
+                   init-result
+                   demand-result
+                   config-result))))
         (if after
             (progn
-              (setq after-result (pie--use-package-after `,after init-result config-result))
-              `(progn
-                 ,load-path-and-pie-result
-                 ,@autoloads-result
-                 ,after-result))
-          `(progn
-             ,load-path-and-pie-result
-             ,@autoloads-result
-             ,init-result
-             ,config-result))))))
-
+              (setq after-result (pie--use-package-after `,after init-result demand-result config-result))
+              (pie--use-package-concat
+               load-path-and-pie-result
+               autoloads-result
+               after-result))
+          (pie--use-package-concat
+           load-path-and-pie-result
+           autoloads-result
+           init-result
+           demand-result
+           config-result))))))
 
 (defun pie--installed-p (pp)
   "Check whether package PP has been installed.  PP is an instance of `pie-package'."
