@@ -275,11 +275,11 @@ Usage:
   (declare (indent 1) (debug t))
   (when (and (booleanp disabled)
              (not disabled))
-    (let ((autoloads-result (pie--use-package-autoloads `,autoloads `,package-name))
-          (load-path-and-pie-result (pie--use-package-load-path-and-pie `,load-path `,pie `,package-name))
-          (init-result (pie--use-package-init `,init))
+    (let ((autoloads-result (pie--use-package-autoloads autoloads package-name))
+          (load-path-and-pie-result (pie--use-package-load-path-and-pie load-path pie package-name))
+          (init-result (pie--use-package-init init))
           (demand-result (when demand `(require ',package-name)))
-          (config-result (pie--use-package-config `,config `,package-name))
+          (config-result (pie--use-package-config config package-name))
           (after-result))
       (if when
           (progn
