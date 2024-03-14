@@ -69,9 +69,25 @@
                       (make-directory-autoloads lisp-dir autoloads))))
 
 
+    ;; then you can call `pie-install-packages' to install all packages, or
+    ;; use pie-use-package to install and config packages
+    ;; pie-use-package mimics use-package, but has less features. Here is an example
+
+    (pie-use-package yafolding
+      :pie t ;; or use :pie yafolding
+      :when (eq system-type windows-nt)
+      :autoloads (yafolding-toggle-element-dwim)
+      :demand t
+      :init (progn
+              ;; nothing
+              )
+      :config (progn
+                (add-hook 'prog-mode-hook #'yafolding-mode)
+                )
+      )
   #+END_SRC
 
-* All the keywords
+* All the keywords that `pie` supports
 ** backend
    Symbol, optional.
 
@@ -110,6 +126,14 @@
    A function without any parameter, optional.
 
    Only when it (if specified) returns t, this package will be installed.  
+* All the keywords that `pie-use-package` supports
+  disabled when pie load-path init config autoloads after demand
+  If you use/have used use-package, all but `pie` and `autoloads` will be familiar for you.
+** pie
+   The value of this keyword can be t or a symbol. See the example above.
+   If this keyword is present, pie-use-package will call `pie--install-package-by-name` to install this package.
+** autoloads
+   Similiar to use-package's commands.
 * All the defcustom
 ** pie-vc-heuristic-alist
    Heuristic mapping URL regular expressions to VC backends.
