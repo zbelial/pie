@@ -87,7 +87,7 @@
       )
   #+END_SRC
 
-* All the keywords that `pie` supports
+* All the keywords that ~pie~ supports
 ** backend
    Symbol, optional.
 
@@ -126,8 +126,9 @@
    A function without any parameter, optional.
 
    Only when it (if specified) returns t, this package will be installed.  
-* All the keywords that `pie-use-package` supports
+* All the keywords that ~pie-use-package~ supports
   disabled when pie load-path init config autoloads after demand
+
   If you use/have used use-package, all but `pie` and `autoloads` will be familiar for you.
 ** pie
    The value of this keyword can be t or a symbol. See the example above.
