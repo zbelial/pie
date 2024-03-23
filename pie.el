@@ -35,7 +35,9 @@
 (eval-when-compile
   (require 'cl-macs))
 (require 'subr-x)
-(require 'autoload)
+(eval-and-compile
+  (or (require 'loaddefs-gen nil t)
+      (require 'autoload)))
 (require 'pie-compat)
 
 (defgroup pie nil
@@ -465,6 +467,18 @@ DEPTH determine how many commits will be cloned."
         (error "Failed to clone %s from %s" name url)
       (message "Finish fetching %s" name))))
 
+(defun pie--generate-autoloads (dir output-file)
+  (cond
+   ((fboundp 'loaddefs-generate)
+    (loaddefs-generate dir output-file))
+   ((fboundp 'make-directory-autoloads)
+    (make-directory-autoloads dir output-file))
+   ((fboundp 'update-directory-autoloads)
+    (let ((generated-autoload-file output-file))
+      (update-directory-autoloads dir))))
+  (when-let ((buf (find-buffer-visiting output-file)))
+    (kill-buffer buf)))
+
 (defun pie-empty-build (pp)
   "Do nothing.")
 
@@ -474,9 +488,9 @@ DEPTH determine how many commits will be cloned."
          (lisp-dir (pie-package-lisp-dir pp))
          (default-directory lisp-dir)
          (feature (concat name "-autoloads"))
-         (autoloads (concat feature ".el")))
+         (autoloads (expand-file-name (concat feature ".el") lisp-dir)))
     (add-to-list 'load-path lisp-dir)
-    (make-directory-autoloads lisp-dir (expand-file-name autoloads lisp-dir))))
+    (pie--generate-autoloads lisp-dir autoloads)))
 
 (defun pie-default-build (pp)
   "Compile elisp files of PP."
@@ -486,12 +500,12 @@ DEPTH determine how many commits will be cloned."
          (files (directory-files lisp-dir t "\\.el$"))
          (ignore-files (append (list ".dir-locals.el") (pie-package-ignore-files pp)))
          (feature (concat name "-autoloads"))
-         (autoloads (concat feature ".el")))
+         (autoloads (expand-file-name (concat feature ".el") lisp-dir)))
     (add-to-list 'load-path lisp-dir)
     (cl-dolist (file files)
       (when (not (member (file-name-nondirectory file) ignore-files))
         (byte-compile-file file)))
-    (make-directory-autoloads lisp-dir (expand-file-name autoloads lisp-dir))))
+    (pie--generate-autoloads lisp-dir autoloads)))
 
 ;;;###autoload
 (defun pie-update-package ()
