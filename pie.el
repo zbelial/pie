@@ -397,7 +397,8 @@ Usage:
     ;; install all deps first
     (when deps
       (cl-dolist (dep deps)
-        (pie--install-package-by-name dep)))
+        (when (not (string-equal dep name))
+          (pie--install-package-by-name dep))))
     ;; fetch package
     (unless (pie--fetched-p pp)
       (pie--fetch-package pp)
@@ -507,6 +508,59 @@ DEPTH determine how many commits will be cloned."
         (byte-compile-file file)))
     (pie--generate-autoloads lisp-dir autoloads)))
 
+(defun pie--update-package (name &optional update-deps-p force)
+  "Update package whose name is NAME."
+  (let (pp
+        deps
+        pp-tmp
+        packages
+        dir
+        dir-tmp
+        last-update-time)
+    (setq pp (gethash name pie--packages))
+    (setq last-update-time (gethash name pie--package-update-info))
+    (if (and pp
+             (or force
+                 (or (null last-update-time)
+                     (> (- (current-time) last-update-time) 3600))))
+        (progn
+          ;; update all deps first
+          (when update-deps-p
+            (setq deps (pie-package-deps pp))
+            (when deps
+              (cl-dolist (dep deps)
+                (when (not (string-equal dep name))
+                  (pie--update-package dep update-deps-p force)))))
+          ;; update pp itself
+          (remhash name pie--activate-cache)
+          ;; first, clone the package to a tmp directory, then
+          ;; delete the original directory and rename the tmp directory
+          (setq dir (pie-package-repo-dir pp))
+          (setq dir-tmp (concat dir "-tmp"))
+          (setq pp-tmp (make-pie-package :name (pie-package-name pp)
+                                         :package (pie-package-package pp)
+                                         :url (pie-package-url pp)
+                                         :rev (pie-package-rev pp)
+                                         :backend (pie-package-backend pp)
+                                         :depth (pie-package-depth pp)
+                                         :branch (pie-package-branch pp)
+                                         :build (pie-package-build pp)
+                                         :deps (pie-package-deps pp)
+                                         :repo-dir dir-tmp))
+          (delete-directory dir-tmp t)
+          (pie--fetch-package pp-tmp)
+          (if (pie--fetched-p pp-tmp)
+              (progn
+                (delete-directory dir t)
+                (rename-file dir-tmp dir)
+                ;; build
+                (pie--build-package pp t)
+                (when pie-activite-package
+                  (pie--activate-package pp))
+                (puthash name (current-time) pie--package-update-info))
+            (error "Failed to clone %s" name)))
+      (error "No package named %s is defined" name))))
+
 ;;;###autoload
 (defun pie-update-package ()
   "Update a package in `pie--packages'."
@@ -520,36 +574,7 @@ DEPTH determine how many commits will be cloned."
     (setq packages (hash-table-keys pie--packages))
     (setq name (completing-read "Package Name: " packages))
     (when name
-      (setq pp (gethash name pie--packages))
-      (if pp
-          (progn
-            (remhash name pie--activate-cache)
-            ;; first, clone the package to a tmp directory, then
-            ;; delete the original directory and rename the tmp directory
-            (setq dir (pie-package-repo-dir pp))
-            (setq dir-tmp (concat dir "-tmp"))
-            (setq pp-tmp (make-pie-package :name (pie-package-name pp)
-                                           :package (pie-package-package pp)
-                                           :url (pie-package-url pp)
-                                           :rev (pie-package-rev pp)
-                                           :backend (pie-package-backend pp)
-                                           :depth (pie-package-depth pp)
-                                           :branch (pie-package-branch pp)
-                                           :build (pie-package-build pp)
-                                           :deps (pie-package-deps pp)
-                                           :repo-dir dir-tmp))
-            (delete-directory dir-tmp t)
-            (pie--fetch-package pp-tmp)
-            (if (pie--fetched-p pp-tmp)
-                (progn
-                  (delete-directory dir t)
-                  (rename-file dir-tmp dir)
-                  ;; build
-                  (pie--build-package pp t)
-                  (when pie-activite-package
-                    (pie--activate-package pp)))
-              (error "Failed to clone %s" name)))
-        (user-error "No package named %s is defined" name)))))
+      (pie--update-package name nil t))))
 
 (defalias 'pie-install-package #'pie-update-package)
 
@@ -602,6 +627,20 @@ Called after the last `pie' invoking."
     (error
      (message "Error when installing packages: %S" err))))
 
+(defvar pie--package-update-info (make-hash-table :test #'equal)
+  "Key is the package name, value is the timestamp this package was updated in this session.")
+
+;;;###autoload
+(defun pie-update-all-packages ()
+  "Update all packages."
+  (interactive)
+  (condition-case err
+      (progn
+        (cl-dolist (name (hash-table-keys pie--packages))
+          (pie--update-package name t nil))
+        (message "All packages have been updated."))
+    (error
+     (message "Error when installing packages: %S" err))))
 
 (provide 'pie)
 
