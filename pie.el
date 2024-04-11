@@ -255,12 +255,15 @@ Usage:
                    ((stringp pie) pie)
                    ((and (booleanp pie) pie)
                     (symbol-name package-name))
-                   (t
+                   ((symbolp pie)
                     (symbol-name pie)))))
     (if load-path
         `(add-to-list 'load-path ,load-path)
-      (when pie
-        `(pie--install-package-by-name ,pie-name)))))
+      (if pie-name
+          `(pie--install-package-by-name ,pie-name)
+        (when (listp pie)
+          `(when ,pie
+             (pie--install-package-by-name ,(symbol-name package-name))))))))
 
 (defun pie--use-package-init (init)
   (when init
