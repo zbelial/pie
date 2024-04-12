@@ -255,13 +255,13 @@ Usage:
                    ((stringp pie) pie)
                    ((and (booleanp pie) pie)
                     (symbol-name package-name))
-                   ((symbolp pie)
+                   ((and (symbolp pie) (not (booleanp pie)))
                     (symbol-name pie)))))
     (if load-path
         `(add-to-list 'load-path ,load-path)
       (if pie-name
           `(pie--install-package-by-name ,pie-name)
-        (when (listp pie)
+        (when (consp pie)
           `(when ,pie
              (pie--install-package-by-name ,(symbol-name package-name))))))))
 
