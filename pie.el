@@ -554,7 +554,16 @@ DEPTH determine how many commits will be cloned."
               (error "Failed to clone %s" name)))
         (user-error "No package named %s is defined" name)))))
 
-(defalias 'pie-install-package #'pie-update-package)
+;;;###autoload
+(defun pie-install-package ()
+  "Install a package in `pie--packages'."
+  (interactive)
+  (let (name
+        packages)
+    (setq packages (hash-table-keys pie--packages))
+    (setq name (completing-read "Package Name: " packages))
+    (when name
+      (pie--install-package-by-name name))))
 
 ;;;###autoload
 (defun pie-rebuild-package ()
