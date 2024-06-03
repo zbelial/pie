@@ -436,6 +436,21 @@ DEPTH determine how many commits will be cloned."
       (setq cmd (concat "git --no-pager clone " (pie--git-depth depth) url " " dir))
       (call-process-shell-command cmd nil nil)))))
 
+(defun pie--git-pull (dir)
+  "Use git to clone a repo from URL, save it to DIR.
+If REV is specified, fetch that commit. "
+  (let (cmd
+        (current-dir default-directory)
+        (default-directory dir))
+    (condition-case err
+        (progn
+          (cd dir)
+          (setq cmd (concat "git pull"))
+          (call-process-shell-command cmd nil nil)
+          (cd current-dir))
+      (error
+       (message "Error when pulling package, %S" err)))))
+
 (defun pie--download (url dir)
   "Download a file from URL to DIR."
   (let (name
@@ -469,6 +484,39 @@ DEPTH determine how many commits will be cloned."
     (if (not (pie--fetched-p pp))
         (error "Failed to clone %s from %s" name url)
       (message "Finish fetching %s" name))))
+
+(defun pie--pull-package (pp)
+  "Pull package PP, where PP is an instance of `pie-package'."
+  (let ((dir (pie-package-repo-dir pp))
+        (url (pie-package-url pp))
+        (rev (pie-package-rev pp))
+        (backend (pie-package-backend pp))
+        (name (pie-package-package pp)))
+    (message "Start to pull %s" name)
+    (unless (file-exists-p dir)
+      (make-directory dir t))
+    (cond
+     ((and (eq backend 'Git)
+           (null rev))
+      (pie--git-pull dir))
+     ((eq backend 'http)
+      (pie--download url dir))
+     ((and (fboundp 'vc-pull)
+           (member backend vc-handled-backends))
+      (let ((current-dir default-directory)
+            (default-directory dir))
+        (condition-case err
+            (progn
+              (cd dir)
+              (vc-pull)
+              (cd current-dir))
+          (error
+           (message "Error when pulling package, %S" err)))))
+     (t
+      (error "Unsupported backend %s" backend)))
+    (if (not (pie--fetched-p pp))
+        (error "Failed to pull %s from %s" name url)
+      (message "Finish pulling %s" name))))
 
 (defun pie--generate-autoloads (dir output-file)
   (cond
@@ -552,6 +600,30 @@ DEPTH determine how many commits will be cloned."
                   (when pie-activite-package
                     (pie--activate-package pp)))
               (error "Failed to clone %s" name)))
+        (user-error "No package named %s is defined" name)))))
+
+;;;###autoload
+(defun pie-update-package-simple ()
+  "Update a package in `pie--packages'."
+  (interactive)
+  (let (name
+        pp
+        packages)
+    (setq packages (hash-table-keys pie--packages))
+    (setq name (completing-read "Package Name: " packages))
+    (when name
+      (setq pp (gethash name pie--packages))
+      (if pp
+          (progn
+            (remhash name pie--activate-cache)
+            (pie--pull-package pp)
+            (if (pie--fetched-p pp)
+                (progn
+                  ;; build
+                  (pie--build-package pp t)
+                  (when pie-activite-package
+                    (pie--activate-package pp)))
+              (error "Failed to pull %s" name)))
         (user-error "No package named %s is defined" name)))))
 
 ;;;###autoload
