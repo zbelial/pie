@@ -424,13 +424,13 @@ DEPTH determine how many commits will be cloned."
     (cond
      (rev
       (if branch
-          (setq cmd (concat "git --no-pager clone  --branch " branch " --single-branch " url " " dir))
+          (setq cmd (concat "git --no-pager clone  --branch " branch " " url " " dir))
         (setq cmd (concat "git --no-pager clone " url " " dir)))
       (when (zerop (call-process-shell-command cmd nil nil))
         (let ((default-directory dir))
           (call-process-shell-command (concat "git checkout " rev)))))
      (branch
-      (setq cmd (concat "git --no-pager clone " (pie--git-depth depth) " --branch " branch " --single-branch " url " " dir))
+      (setq cmd (concat "git --no-pager clone " (pie--git-depth depth) " --branch " branch " " url " " dir))
       (call-process-shell-command cmd nil nil))
      (t
       (setq cmd (concat "git --no-pager clone " (pie--git-depth depth) url " " dir))
