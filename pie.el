@@ -480,9 +480,9 @@ If REV is specified, fetch that commit. "
            (member backend vc-handled-backends))
       (vc-clone url backend dir branch))
      (t
-      (error "Unsupported backend %s" backend)))
+      (user-error "Unsupported backend %s" backend)))
     (if (not (pie--fetched-p pp))
-        (error "Failed to clone %s from %s" name url)
+        (warn "Failed to clone %s from %s" name url)
       (message "Finish fetching %s" name))))
 
 (defun pie--pull-package (pp)
@@ -513,9 +513,9 @@ If REV is specified, fetch that commit. "
           (error
            (message "Error when pulling package, %S" err)))))
      (t
-      (error "Unsupported backend %s" backend)))
+      (user-error "Unsupported backend %s" backend)))
     (if (not (pie--fetched-p pp))
-        (error "Failed to pull %s from %s" name url)
+        (warn "Failed to pull %s from %s" name url)
       (message "Finish pulling %s" name))))
 
 (defun pie--generate-autoloads (dir output-file)
@@ -599,7 +599,7 @@ If REV is specified, fetch that commit. "
                   (pie--build-package pp t)
                   (when pie-activite-package
                     (pie--activate-package pp)))
-              (error "Failed to clone %s" name)))
+              (warn "Failed to clone %s" name)))
         (user-error "No package named %s is defined" name)))))
 
 ;;;###autoload
@@ -623,7 +623,7 @@ If REV is specified, fetch that commit. "
                   (pie--build-package pp t)
                   (when pie-activite-package
                     (pie--activate-package pp)))
-              (error "Failed to pull %s" name)))
+              (warn "Failed to pull %s" name)))
         (user-error "No package named %s is defined" name)))))
 
 ;;;###autoload
