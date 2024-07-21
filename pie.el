@@ -604,7 +604,7 @@ If REV is specified, fetch that commit. "
 
 ;;;###autoload
 (defun pie-update-package-simple ()
-  "Update a package in `pie--packages'."
+  "Update a package in `pie--packages'. Just pull the package, and then build it."
   (interactive)
   (let (name
         pp
