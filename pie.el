@@ -116,6 +116,11 @@ If no depth is specified explicitly, this value will be used."
   :type  'directory
   :group 'pie)
 
+(defcustom pie-rebuild-package-dwim nil
+  "If t, rebuild packages outdated when emacs starting up."
+  :type 'boolean
+  :group 'pie)
+
 (defvar pie--packages (make-hash-table :test #'equal)
   "Key is the package name, value is an instance of `pie-package'.")
 
@@ -368,6 +373,16 @@ Usage:
         (setq depth-str (format " --depth %d " pie-git-depth)))))
     depth-str))
 
+(defun pie--dir-modification-time (dir)
+  (time-convert (file-attribute-modification-time (file-attributes dir)) 'integer))
+
+(defun pie--need-to-rebuild (src-dir build-dir)
+  (and pie-rebuild-package-dwim
+       (file-directory-p src-dir)
+       (file-directory-p build-dir)
+       (< (pie--dir-modification-time build-dir)
+          (pie--dir-modification-time src-dir))))
+
 (defun pie--build-package (pp &optional buildp)
   "Build package PP.  If BUILDP is t, build forcefully."
   (let ((dir (pie-package-repo-dir pp))
@@ -379,8 +394,9 @@ Usage:
     (when (not (member lisp-dir load-path))
       (add-to-list 'load-path lisp-dir))
     (when (and (pie--fetched-p pp)
-               (or (not (pie--built-p pp))
-                   buildp))
+               (or buildp
+                   (not (pie--built-p pp))
+                   (pie--need-to-rebuild dir build-dir)))
       (message "build package %s" name)
       (when (not (eq build-type 'repo))
         (delete-directory build-dir t)
