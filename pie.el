@@ -255,14 +255,14 @@ Usage:
       (push `(autoload ',al ,name nil t) result))
     (macroexp-progn result)))
 
-(defun pie--use-package-load-path-and-pie (load-path pie package-name)
+(defun pie--use-package-load-path-and-pie (pie-load-path pie package-name)
   (let ((pie-name (cond
                    ((stringp pie) pie)
                    ((and (booleanp pie) pie)
                     (symbol-name package-name))
                    ((and (symbolp pie) (not (booleanp pie)))
                     (symbol-name pie)))))
-    (if load-path
+    (if pie-load-path
         `(add-to-list 'load-path ,load-path)
       (if pie-name
           `(pie--install-package-by-name ,pie-name)
