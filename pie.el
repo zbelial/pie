@@ -637,6 +637,7 @@ If REV is specified, fetch that commit. "
                 (progn
                   ;; build
                   (pie--build-package pp t)
+                  (puthash name 0 pie--activate-cache)
                   (when pie-activite-package
                     (pie--activate-package pp)))
               (warn "Failed to pull %s" name)))
