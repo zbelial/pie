@@ -121,6 +121,11 @@ If no depth is specified explicitly, this value will be used."
   :type 'boolean
   :group 'pie)
 
+(defcustom pie-delete-el-files-from-build-dir nil
+  "If t, delete elisp files from package's build dir."
+  :type 'boolean
+  :group 'pie)
+
 (defvar pie--packages (make-hash-table :test #'equal)
   "Key is the package name, value is an instance of `pie-package'.")
 
@@ -140,8 +145,10 @@ but is during rebuilding, 1 means a package has been activeted.")
   (build) ;; function
   (deps) ;; list of symbol
   (repo-dir) ;; which directory this package is/will be cloned to.
+  (lisp-dir) ;; optional, which directory under repo-dir elisp files are in
+  (repo-lisp-dir) ;; absolute lisp dir in repo dir
   (build-dir) ;; which directory this package is/will be installed to.
-  (lisp-dir) ;; optional, which directory elisp files are in
+  (build-lisp-dir) ;; absolute lisp dir in build dir
   (build-type) ;; optional
   (ignore-files) ;; optional, files ignored when building 
   )
@@ -193,7 +200,9 @@ Usage:
                  this package will be installed."
   (let (pp
         repo-dir
-        build-dir)
+        build-dir
+        build-lisp-dir
+        repo-lisp-dir)
     (when (and condition
                (functionp condition))
       (when (not (funcall condition))
@@ -211,8 +220,11 @@ Usage:
         (setq build-dir repo-dir)
       (setq build-dir (expand-file-name package pie-builds-directory)))
     (if lisp-dir
-        (setq lisp-dir (expand-file-name lisp-dir build-dir))
-      (setq lisp-dir build-dir))
+        (progn
+          (setq build-lisp-dir (expand-file-name lisp-dir build-dir)
+                repo-lisp-dir (expand-file-name lisp-dir repo-dir)))
+      (setq build-lisp-dir build-dir
+            repo-lisp-dir repo-dir))
     (when (functionp deps)
       (setq deps (funcall deps)))
     (setq pp (make-pie-package :name package
@@ -225,9 +237,11 @@ Usage:
                                :build build
                                :deps deps
                                :repo-dir repo-dir
-                               :build-dir build-dir
-                               :build-type build-type
                                :lisp-dir lisp-dir
+                               :repo-lisp-dir repo-lisp-dir
+                               :build-dir build-dir
+                               :build-lisp-dir build-lisp-dir
+                               :build-type build-type
                                :ignore-files ignore-files))
     (pie--add-to-packages pp)))
 
@@ -385,23 +399,27 @@ Usage:
 
 (defun pie--build-package (pp &optional buildp)
   "Build package PP.  If BUILDP is t, build forcefully."
-  (let ((dir (pie-package-repo-dir pp))
-        (lisp-dir (pie-package-lisp-dir pp))
+  (let ((repo-dir (pie-package-repo-dir pp))
+        (repo-lisp-dir (pie-package-repo-lisp-dir pp))
+        (build-lisp-dir (pie-package-build-lisp-dir pp))
         (build-type (pie-package-build-type pp))
         (build-dir (pie-package-build-dir pp))
         (build (pie-package-build pp))
         (name (pie-package-package pp)))
-    (when (not (member lisp-dir load-path))
-      (add-to-list 'load-path lisp-dir))
+    (when (not (member build-lisp-dir load-path))
+      (add-to-list 'load-path build-lisp-dir))
+    (when (and pie-delete-el-files-from-build-dir
+               (not (member repo-lisp-dir load-path)))
+      (add-to-list 'load-path repo-lisp-dir))
     (when (and (pie--fetched-p pp)
                (or buildp
                    (not (pie--built-p pp))
-                   (pie--need-to-rebuild dir build-dir)))
+                   (pie--need-to-rebuild repo-dir build-dir)))
       (message "build package %s" name)
       (when (not (eq build-type 'repo))
         (delete-directory build-dir t)
         (make-directory build-dir t)
-        (copy-directory dir build-dir t t t))
+        (copy-directory repo-dir build-dir t t t))
       (let ((default-directory build-dir))
         (if build
             (funcall build pp)
@@ -543,8 +561,9 @@ If REV is specified, fetch that commit. "
    ((fboundp 'update-directory-autoloads)
     (let ((generated-autoload-file output-file))
       (update-directory-autoloads dir))))
-  (when-let ((buf (find-buffer-visiting output-file)))
-    (kill-buffer buf)))
+  ;; (when-let ((buf (find-buffer-visiting output-file)))
+  ;;   (kill-buffer buf))
+  )
 
 (defun pie-empty-build (pp)
   "Do nothing.")
@@ -552,27 +571,34 @@ If REV is specified, fetch that commit. "
 (defun pie-autoloads-build (pp)
   "Just generate autoloads files."
   (let* ((name (pie-package-package pp))
-         (lisp-dir (pie-package-lisp-dir pp))
-         (default-directory lisp-dir)
+         (build-type (pie-package-build-type pp))
+         (build-lisp-dir (pie-package-build-lisp-dir pp))
+         (default-directory build-lisp-dir)
          (feature (concat name "-autoloads"))
-         (autoloads (expand-file-name (concat feature ".el") lisp-dir)))
-    (add-to-list 'load-path lisp-dir)
-    (pie--generate-autoloads lisp-dir autoloads)))
+         (autoloads (expand-file-name (concat feature ".el") build-lisp-dir)))
+    (pie--generate-autoloads build-lisp-dir autoloads)))
 
 (defun pie-default-build (pp)
   "Compile elisp files of PP."
   (let* ((name (pie-package-package pp))
-         (lisp-dir (pie-package-lisp-dir pp))
-         (default-directory lisp-dir)
-         (files (directory-files lisp-dir t "\\.el$"))
+         (build-dir (pie-package-build-dir pp))
+         (build-type (pie-package-build-type pp))
+         (build-lisp-dir (pie-package-build-lisp-dir pp))
+         (default-directory build-lisp-dir)
+         (files (directory-files build-lisp-dir t "\\.el$"))
          (ignore-files (append (list ".dir-locals.el") (pie-package-ignore-files pp)))
          (feature (concat name "-autoloads"))
-         (autoloads (expand-file-name (concat feature ".el") lisp-dir)))
-    (add-to-list 'load-path lisp-dir)
+         (autoloads (expand-file-name (concat feature ".el") build-lisp-dir))
+         el-files)
     (cl-dolist (file files)
-      (when (not (member (file-name-nondirectory file) ignore-files))
+      (when (not (member (file-relative-name file build-dir) ignore-files))
+        (push file el-files)
         (byte-compile-file file)))
-    (pie--generate-autoloads lisp-dir autoloads)))
+    (pie--generate-autoloads build-lisp-dir autoloads)
+    (when (and pie-delete-el-files-from-build-dir
+               (not (eq build-type 'repo)))
+      (cl-dolist (f el-files)
+        (delete-file f)))))
 
 ;;;###autoload
 (defun pie-update-package ()
@@ -681,11 +707,9 @@ If REV is specified, fetch that commit. "
     (when (and (or (null cache)
                    (= cache 0))
                (pie--built-p pp))
-      (let* ((lisp-dir (pie-package-lisp-dir pp))
-             (autoloads (expand-file-name (concat feature ".el") lisp-dir)))
+      (let* ((build-lisp-dir (pie-package-build-lisp-dir pp))
+             (autoloads (expand-file-name (concat feature ".el") build-lisp-dir)))
         (ignore-errors (unload-feature (intern feature) t))
-        (when (not (member lisp-dir load-path))
-          (add-to-list 'load-path lisp-dir))
         (when (file-exists-p autoloads)
           (require (intern feature))))
       (puthash name 1 pie--activate-cache))))
