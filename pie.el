@@ -309,11 +309,9 @@ Usage:
           (progn
             (if after
                 (progn
-                  (setq after-result (pie--use-package-after `,after init-result demand-result config-result))
+                  (setq after-result (pie--use-package-after `,after load-path-and-pie-result autoloads-result init-result demand-result config-result))
                   `(when ,when
                      ,(pie--use-package-concat
-                       load-path-and-pie-result
-                       autoloads-result
                        after-result)))
               `(when ,when
                  ,(pie--use-package-concat
@@ -324,10 +322,8 @@ Usage:
                    config-result))))
         (if after
             (progn
-              (setq after-result (pie--use-package-after `,after init-result demand-result config-result))
+              (setq after-result (pie--use-package-after `,after load-path-and-pie-result autoloads-result init-result demand-result config-result))
               (pie--use-package-concat
-               load-path-and-pie-result
-               autoloads-result
                after-result))
           (pie--use-package-concat
            load-path-and-pie-result
